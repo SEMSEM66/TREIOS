@@ -130,6 +130,8 @@ final class RootViewController: UIViewController {
     }
 
     func showProbe() { show(GameViewController(mode: .probe)) }
+    /// The download screen while the game is installed: to fetch a newer set of files, or to change the source.
+    func showFiles() { show(DownloadViewController { [weak self] in self?.route() }) }
 
     override var childForStatusBarHidden: UIViewController? { current }
     override var childForHomeIndicatorAutoHidden: UIViewController? { current }

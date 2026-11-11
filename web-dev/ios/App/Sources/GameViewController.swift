@@ -322,6 +322,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         menu.addAction(UIAlertAction(title: "Share debug log", style: .default) { [weak self] _ in self?.shareLogs() })
         if mode == .game {
             menu.addAction(UIAlertAction(title: "Compat probe", style: .default) { [weak self] _ in (self?.parent as? RootViewController)?.showProbe() })
+            menu.addAction(UIAlertAction(title: "Game files", style: .default) { [weak self] _ in (self?.parent as? RootViewController)?.showFiles() })
             menu.addAction(UIAlertAction(title: "Reload the game", style: .default) { [weak self] _ in
                 tlog("app", "reload asked for from the debug menu")
                 self?.load()
@@ -409,7 +410,7 @@ final class LogViewController: UIViewController {
     }
 
     deinit {
-        if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let observer = observer { NotificationCenter.default.removeObserver(observer) }
     }
 
     override var prefersStatusBarHidden: Bool { true }
