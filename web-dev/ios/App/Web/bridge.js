@@ -42,21 +42,26 @@
   // starts with nothing stored takes the mirror back before the game reads its saves.
   try {
     const store = window.localStorage, proto = Storage.prototype;
+    const mine = (k) => String(k).startsWith("tsuki.");   // every key of the game's (the probe page's test keys are not saves)
+    const stored = () => { const keys = []; for (let i = 0; i < store.length; i++) { const k = store.key(i); if (mine(k)) keys.push(k); } return keys; };
     const mirror = N.saveMirror;
     delete N.saveMirror;
-    if (mirror && store.length === 0) {
-      let count = 0;
-      for (const k of Object.keys(mirror)) { try { store.setItem(k, mirror[k]); count++; } catch { /* over the quota: the rest stays in the file */ } }
-      post({ t: "saves", op: "restored", count });
-    } else if (store.length && !N.hasSaveMirror) {
-      const items = {};
-      for (let i = 0; i < store.length; i++) { const k = store.key(i); items[k] = store.getItem(k); }
-      post({ t: "saves", op: "snapshot", items });
+    if (N.mode === "game") {
+      const keys = stored();
+      if (mirror && keys.length === 0) {
+        let count = 0;
+        for (const k of Object.keys(mirror)) { try { store.setItem(k, mirror[k]); count++; } catch { /* over the quota: the rest stays in the file */ } }
+        post({ t: "saves", op: "restored", count });
+      } else if (keys.length && !N.hasSaveMirror) {
+        const items = {};
+        for (const k of keys) items[k] = store.getItem(k);
+        post({ t: "saves", op: "snapshot", items });
+      }
+      const set = proto.setItem, remove = proto.removeItem, clear = proto.clear;
+      proto.setItem = function (k, v) { set.call(this, k, v); if (this === store && mine(k)) post({ t: "saves", op: "set", k: String(k), v: String(v) }); };
+      proto.removeItem = function (k) { remove.call(this, k); if (this === store && mine(k)) post({ t: "saves", op: "remove", k: String(k) }); };
+      proto.clear = function () { clear.call(this); if (this === store) post({ t: "saves", op: "clear" }); };
     }
-    const set = proto.setItem, remove = proto.removeItem, clear = proto.clear;
-    proto.setItem = function (k, v) { set.call(this, k, v); if (this === store) post({ t: "saves", op: "set", k: String(k), v: String(v) }); };
-    proto.removeItem = function (k) { remove.call(this, k); if (this === store) post({ t: "saves", op: "remove", k: String(k) }); };
-    proto.clear = function () { clear.call(this); if (this === store) post({ t: "saves", op: "clear" }); };
   } catch (e) { log("error", `save mirror: ${show(e)}`); }
 
   // ---- sound ---------------------------------------------------------------------------------------------------
