@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Compat probe</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0d10; color: #d8dde3; font: 12px/1.35 -apple-system, system-ui, sans-serif; -webkit-text-size-adjust: 100%; }
+  #scroll { position: fixed; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: max(10px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); box-sizing: border-box; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  #summary { font-size: 13px; margin: 4px 0 8px; white-space: pre-wrap; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 10px; }
+  button { font: inherit; font-size: 13px; padding: 7px 12px; border: 0; border-radius: 8px; background: #2b3440; color: #fff; }
+  button:active { background: #3d4a5a; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 2px 6px 2px 0; vertical-align: top; border-top: 1px solid #1c2128; }
+  td.g { color: #8b98a8; white-space: nowrap; }
+  td.n { white-space: nowrap; }
+  td.s { width: 3.2em; font-weight: 600; }
+  .ok { color: #58d68d; } .fail { color: #ff6b6b; } .info { color: #8b98a8; }
+  td.d { word-break: break-word; font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+  #clips { display: flex; gap: 6px; margin: 6px 0; }
+  #clips video { width: 128px; height: 72px; background: #000; }
+</style>
+</head>
+<body>
+<div id="scroll">
+  <h1>Tsukihime: compat probe</h1>
+  <div id="summary">Running...</div>
+  <div class="bar">
+    <button id="again">Run again</button>
+    <button id="tone">Play a test tone</button>
+    <button id="share">Share the results</button>
+    <button id="close">Close</button>
+  </div>
+  <div id="clips"></div>
+  <table><tbody id="rows"></tbody></table>
+</div>
+<script src="probe.js"></script>
+</body>
+</html>
