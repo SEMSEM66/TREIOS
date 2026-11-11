@@ -1,0 +1,101 @@
+name: iOS
+
+# The iPhone app (web-dev/ios). There is no Mac behind this repository: these runs are the only build and test
+# environment, so every job prints what it finds and uploads its logs, screenshots and result bundles even when a
+# step fails.
+on:
+  push:
+    branches: [ios]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests and asset check (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Engine tests
+        run: node --test web-dev/tests/*.test.mjs
+      - name: Asset check
+        run: python3 web-dev/ios/ci/check_assets_repo.py
+
+  app:
+    name: App (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iOS 26 simulator
+            runner: macos-26
+            xcode: '26.6'
+            ios: '26'
+            ipa: true
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+      SIM_OS: ${{ matrix.ios }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: What this runner has
+        run: |
+          sw_vers
+          sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
+          df -h /
+          ls -d /Applications/Xcode*.app
+          xcodebuild -version
+          xcrun simctl list runtimes
+          xcrun simctl list devicetypes | grep -i "iphone 1[6-9]" || true
+          python3 --version
+      - name: Install XcodeGen
+        run: brew install xcodegen && xcodegen --version
+      - name: Build (simulator app and unsigned IPA)
+        run: web-dev/ios/build_ipa.sh --sim --device
+      - name: Boot an iPhone 16 simulator
+        run: web-dev/ios/ci/sim.sh boot
+      - name: Install
+        run: web-dev/ios/ci/sim.sh install web-dev/ios/build/Tsukihime-sim.app
+      - name: Run the game (assets read from the checkout)
+        run: web-dev/ios/ci/sim.sh run game 90 "" -TsukiAssetsDir "$GITHUB_WORKSPACE/web/assets" -TsukiAutopilot 1
+      - name: Simulator log, shut down
+        if: always()
+        run: web-dev/ios/ci/sim.sh finish
+      - name: Upload the IPA
+        if: always() && matrix.ipa
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Tsukihime-unsigned-ipa
+          path: web-dev/ios/build/Tsukihime-unsigned.ipa
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload logs, screenshots and result bundles
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-${{ matrix.runner }}-ios${{ matrix.ios }}
+          path: |
+            web-dev/ios/build/ci
+            web-dev/ios/build/logs
+            web-dev/ios/build/*.xcresult
+          if-no-files-found: warn
+          retention-days: 30
