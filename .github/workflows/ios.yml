@@ -152,8 +152,9 @@ jobs:
       - name: The game, with its files read from the checkout (the page's process is ended once on the way)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         env:
+          MEMORY_WARNING_AT: '60'
           KILL_WEB_AT: '70'
-        run: web-dev/ios/ci/sim.sh run game 150 "" -TsukiAssetsDir "$GITHUB_WORKSPACE/web/assets" -TsukiAutopilot 1
+        run: web-dev/ios/ci/sim.sh run game 160 "" -TsukiAssetsDir "$GITHUB_WORKSPACE/web/assets" -TsukiAutopilot 1
       - name: Fresh install
         id: fresh
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}

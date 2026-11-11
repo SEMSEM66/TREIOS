@@ -152,6 +152,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private func load() {
         pageLoads += 1
         let url = startURL
+        resumeOnLoad = false   // (a later reload from the debug menu is a plain one)
         tlog("web", "loading \(url.absoluteString) (load #\(pageLoads))")
         // The user scripts are made once; the save mirror they carry is only read by a page whose storage is empty.
         webView.load(URLRequest(url: url))

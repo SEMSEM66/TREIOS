@@ -7,7 +7,9 @@
 #                                     video, until the debug log has a line matching the regular expression <until>
 #                                     ("" for none) or <seconds> have passed; then copies the app's Documents (the debug
 #                                     log, the probe's result, the save mirror) out. Exit 1 if <until> was given and never seen.
+#   sim.sh memory-warning             sends the app a memory warning
 #   sim.sh kill-web                   ends the page's WebKit content process, as iOS does when memory runs short
+#                                     (in a run: MEMORY_WARNING_AT and KILL_WEB_AT, seconds after the launch)
 #   sim.sh finish                     the simulator's own log for the app and WebKit, then shuts the simulator down
 # Everything is written under $SIM_OUT (default web-dev/ios/build/ci).
 set -uo pipefail
@@ -53,10 +55,11 @@ run)
     sleep 1
     echo "launch: $*"
     xcrun simctl launch "$udid" "$bundle" "$@"
-    seen=0; t=0; n=0; killed=0
+    seen=0; t=0; n=0; killed=0; warned=0
     while [ "$t" -lt "$seconds" ]; do
         sleep "$every"; t=$((t + every)); n=$((n + 1))
         shot "$out/$name-$(printf %02d "$n").png"
+        if [ -n "${MEMORY_WARNING_AT:-}" ] && [ "$warned" = 0 ] && [ "$t" -ge "$MEMORY_WARNING_AT" ]; then warned=1; "$0" memory-warning || true; fi
         if [ -n "${KILL_WEB_AT:-}" ] && [ "$killed" = 0 ] && [ "$t" -ge "$KILL_WEB_AT" ]; then killed=1; "$0" kill-web || true; fi
         log="$(debug_log)"
         if [ -n "$until" ] && [ -n "$log" ] && grep -Eq "$until" "$log" 2>/dev/null; then seen=1; echo "seen after ${t}s: $until"; break; fi
@@ -77,15 +80,18 @@ run)
     fi
     if [ -n "$until" ] && [ "$seen" = 0 ]; then echo "NOT SEEN within ${seconds}s: $until" >&2; exit 1; fi
     ;;
+memory-warning)
+    # What the Simulator's "Simulate Memory Warning" menu item sends.
+    xcrun simctl spawn "$udid" notifyutil -p UISimulatedMemoryWarningNotification && echo "memory warning sent"
+    ;;
 kill-web)
-    # The page's process belongs to the simulator, which runs it as a process of this Mac.
-    pids="$(pgrep -f "launchd_sim|com.apple.WebKit.WebContent" | tr '\n' ' ')"
-    pgrep -fl "com.apple.WebKit.WebContent" | grep -F "$udid" || pgrep -fl "com.apple.WebKit.WebContent" | head -5
-    victim="$(pgrep -f "CoreSimulator/Devices/$udid.*com.apple.WebKit.WebContent" | head -1)"
-    [ -z "$victim" ] && victim="$(pgrep -f "com.apple.WebKit.WebContent" | tail -1)"
-    [ -n "$victim" ] || { echo "no WebContent process found (processes looked at: $pids)" >&2; exit 1; }
-    echo "ending WebContent process $victim"
-    kill -9 "$victim"
+    # The page's process is a service of the simulator's own launchd; its pid is a process of this Mac.
+    xcrun simctl spawn "$udid" launchctl list 2>/dev/null | grep -i "WebKit" || true
+    victims="$(xcrun simctl spawn "$udid" launchctl list 2>/dev/null | awk '/com\.apple\.WebKit\.WebContent/ && $1 ~ /^[0-9]+$/ { print $1 }' | tr '\n' ' ')"
+    [ -n "$victims" ] || victims="$(pgrep -f "com.apple.WebKit.WebContent" | tr '\n' ' ')"
+    [ -n "$victims" ] || { echo "no WebContent process found" >&2; exit 1; }
+    echo "ending WebContent process(es): $victims"
+    for pid in $victims; do kill -9 "$pid" 2>/dev/null || true; done
     ;;
 finish)
     xcrun simctl spawn "$udid" log show --last 30m --style compact \

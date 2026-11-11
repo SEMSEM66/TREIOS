@@ -1238,6 +1238,10 @@ async function loadingScreen() {
       vm.skipUntil = until;
     }
     await startAt(i, q.get("label") || undefined);
+  } else if (q.has("resume") && ui.newestRecord()) {
+    // ?resume: straight to the newest record, as Continue loads it. The iOS app (web-dev/ios) opens the page this way
+    // when the system has ended it under the player (no logo, no title: the story as it was at the last save).
+    loadSave(ui.newestRecord());
   } else if (await boot()) ui.title();
   else await newGame({ fromTitle: false });
 })().catch((e) => {
