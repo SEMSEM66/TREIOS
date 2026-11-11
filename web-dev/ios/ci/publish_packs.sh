@@ -27,7 +27,7 @@ if [ "${#new[@]}" -gt 0 ]; then
 fi
 gh release upload "$tag" "$dir/index.json" --clobber
 
-grep '\.part$' "$have" | while read -r name; do
+{ grep '\.part$' "$have" || true; } | while read -r name; do
     if ! grep -qxF "$name" "$want"; then
         echo "removing $name (no longer in the index)"
         gh release delete-asset "$tag" "$name" --yes
