@@ -20,7 +20,7 @@ const FADE = { in: 0.024, out: 0.02, to: 1.2 };                          // Conf
 const PRESS = { w: 472, h: 88 };                                          // the title's prompt (TITLE_PARTS_JA/press_start), at its size
 const ART = ["TITLE_PARTS_JA/title_bg1", "TITLE_PARTS_JA/title_titlelog", "TITLE_PARTS_JA/press_start", "DISP_PARTS_JA/menuBG01_upscale", "DIALOG_PARTS_JA/dialog_BG",
   "CONF_PARTS_JA/config_innerbg", "MODEPNL_PARTS_JA/modepanel_window", "MENU_PARTS_JA/underline"];
-const APP_HOSTS = ["appassets.androidplatform.net", "tsukihime.desktop"];   // the apps' own addresses for the page (web-dev/android, web-dev/desktop)
+const APP_HOSTS = ["appassets.androidplatform.net", "tsukihime.desktop", "tsukihime.ios"];   // the apps' own addresses for the page (web-dev/android, web-dev/desktop, web-dev/ios)
 
 export function homeDue(query, host = globalThis.location?.hostname || "") {
   if (query.has("script")) return false;
