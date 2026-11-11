@@ -46,21 +46,26 @@ run)
     name="$2"; seconds="$3"; until="$4"; shift 4
     every="${SHOT_EVERY:-10}"
     xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
-    xcrun simctl io "$udid" recordVideo --codec=h264 --force "$out/$name.mp4" >/dev/null 2>&1 &
+    # (A background job of a script ignores SIGINT, which is how a recording is ended: the wrapper gives it back.)
+    python3 -c 'import os, signal, sys; signal.signal(signal.SIGINT, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])' \
+        xcrun simctl io "$udid" recordVideo --codec=h264 --force "$out/$name.mp4" >/dev/null 2>&1 &
     recorder=$!
     sleep 1
     echo "launch: $*"
     xcrun simctl launch "$udid" "$bundle" "$@"
-    seen=0; t=0; n=0
+    seen=0; t=0; n=0; killed=0
     while [ "$t" -lt "$seconds" ]; do
         sleep "$every"; t=$((t + every)); n=$((n + 1))
         shot "$out/$name-$(printf %02d "$n").png"
+        if [ -n "${KILL_WEB_AT:-}" ] && [ "$killed" = 0 ] && [ "$t" -ge "$KILL_WEB_AT" ]; then killed=1; "$0" kill-web || true; fi
         log="$(debug_log)"
         if [ -n "$until" ] && [ -n "$log" ] && grep -Eq "$until" "$log" 2>/dev/null; then seen=1; echo "seen after ${t}s: $until"; break; fi
     done
     sleep 2
     shot "$out/$name-end.png"
-    kill -INT "$recorder" 2>/dev/null; wait "$recorder" 2>/dev/null
+    kill -INT "$recorder" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$recorder" 2>/dev/null || break; sleep 1; done
+    kill -TERM "$recorder" 2>/dev/null; wait "$recorder" 2>/dev/null
     c="$(container)"
     if [ -n "$c" ]; then
         rm -rf "$out/$name-documents"; cp -R "$c/Documents" "$out/$name-documents" 2>/dev/null || true
