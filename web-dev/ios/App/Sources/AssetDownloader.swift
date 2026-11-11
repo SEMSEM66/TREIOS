@@ -154,7 +154,7 @@ final class AssetDownloader: NSObject, URLSessionDataDelegate {
 
     // MARK: - The run
 
-    private func publish(_ change: (inout Progress) -> Void) {
+    private func publish(_ change: @escaping (inout Progress) -> Void) {
         DispatchQueue.main.async {
             change(&self.progress)
             self.onProgress?(self.progress)
