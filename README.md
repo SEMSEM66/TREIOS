@@ -13,7 +13,6 @@ The Tsukihime remake, *Tsukihime -A piece of blue glass moon-*, rebuilt to play 
 - [How it plays](#how-it-plays): the opening page, saves, skipping, movies, Ciel-sensei
 - [Under the hood](#under-the-hood): loading, fonts, opening a particular scene
 - [The repository](#the-repository): what is where, making the assets again, tests
-- [Deployment](#deployment): how arcueid.date is served
 - [Credits](#credits)
 
 ## Play it
@@ -231,7 +230,6 @@ Script names start with the day, then 00 for Arcueid's route or 01 for Ciel's: `
 | `web/` | The game as served: `app/` (engine, interface, styles, fonts), `assets/` (the game's converted files) and `server.py`. It runs by itself. |
 | `web-dev/` | What makes and checks it: `tools/` (conversions from a game dump), `tests/`, `smoketest/`, `audit/` (the parity audit and the function map), `android/` (the Android app), `ios/` (the iPhone app), `desktop/` (the Windows, macOS and Linux app) |
 | `web-research/` | The first size research and its tools ([FINDINGS.md](web-research/FINDINGS.md)) |
-| `tools/cloudflare/` | The deployment ([below](#deployment)) |
 
 Tests, with Node.js and no packages: `node --test web-dev/tests/*.test.mjs`. Every script at full speed, listing errors: `python3 web-dev/tools/dev_server.py 8770`, then open http://localhost:8770/smoketest.html. What the parity audit in `web-dev/audit/` found and what changed is in [FIXES.md](web-dev/audit/FIXES.md).
 
@@ -294,26 +292,6 @@ web-research/.venv/bin/python -I web-dev/tools/build_effects.py "$PWD"
 ```
 
 These need the Japanese port's prepared `data/tsuki/analysis/main.bin` and `data/tsuki/gen/main`; the exporter checks the image's fingerprint before reading its tables. Motion, shake and sway run in the browser; see [ANIMATIONS.md](web-dev/ANIMATIONS.md) for command coverage and remaining differences.
-
-## Deployment
-
-The live version is [arcueid.date](https://arcueid.date/). A push to `main` that changes `web/`, `tools/cloudflare/` or the deployment workflow publishes through GitHub Actions (`tools/cloudflare/deploy.py`); the workflow can also be started from the Actions tab.
-
-**How it is served.** The R2 bucket `tsukirebuild-assets` holds the whole site: the app's files (`web/app`) at its root and the game's files under `assets/`. The bucket is the domain's custom domain, so Cloudflare serves it directly, behind its cache. No Worker runs for it, so nothing counts against the Workers request allowance, and a file already in Cloudflare's cache is not read from R2 again. Three rules on the zone (set in the Cloudflare dashboard, not in this repository) make that work:
-
-- a URL rewrite: `/` is the bucket's `index.html` (R2 has no index page of its own);
-- a cache rule: everything from the bucket may be cached, each file for as long as it says;
-- a cache rule: the game's media and the content-named sound packs are kept 30 days, at the edge and in the browser.
-
-Each object is stored with its lifetime: 30 days for the game's media (`assets/voice`, `img`, `se`, `bgm`, `movie`, `sys`, `fonts`) and the sound packs and their index in `assets/pack`, which are named by their content; 5 minutes for `index.html`, the tables and the interface art, so that those follow a deployment by themselves.
-
-**Versioned scripts.** The deployment also stores every app file but `index.html` (scripts, styles, icons, fonts) under `v/<version>/`, the version a hash of those files, and the `index.html` it stores loads them from there. Those copies are kept 30 days, since a changed app is a new folder. A page therefore runs only the set of scripts it was published with, never a new `main.js` against an old `vm.js` while caches catch up; earlier versions stay in the bucket for pages still open or still cached. The plain files stay at the bucket's root too. `python3 tools/cloudflare/deploy.py --stage DIR` writes the app as a deployment stores it into a folder, with `assets/` a link to `web/assets`, to try the site locally. When the lifetime rule changes in `deploy.py`, the next deployment sets it again on every object already stored. A media file converted again reaches players who already have it only when their copy expires: give it a new name if it must arrive at once.
-
-**The Android app** is not part of the deployment: at 2.8 GB it is too large for the repository, so `android/tsukihime.apk` is uploaded to the bucket by hand, with the type `application/vnd.android.package-archive` and `Content-Disposition: attachment; filename="Tsukihime.apk"`. A new build must be signed with the same key, so that it installs over the old one. On this plan Cloudflare does not cache files over 512 MB, so the APK is read from R2 at each download, which costs nothing.
-
-**The earlier address.** [tsukirebuild.pages.dev](https://tsukirebuild.pages.dev/) is a Cloudflare Pages project that forwards to the domain, path and query kept (a `_redirects` file written by the deployment). Its Worker (`web/cloudflare/worker.js`) still answers `/assets/*` from the bucket there. Saves are kept by the browser for each address separately, so progress made at the Pages address does not appear on the domain.
-
-**The deployment** compares file checksums and uploads new or modified files to the bucket, then publishes the Pages project. Previous objects are kept for open browser sessions and rollbacks; nothing is deleted from the bucket. GitHub stores its credential in the encrypted repository secret `CLOUDFLARE_API_TOKEN` and the token's ID in the repository variable `CLOUDFLARE_API_TOKEN_ID`. The credential needs account-level `Pages Write` and `Workers R2 Storage Bucket Item Write` scoped to `tsukirebuild-assets`; update both values when rotating it.
 
 ## Credits
 
