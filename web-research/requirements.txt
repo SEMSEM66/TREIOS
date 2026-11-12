@@ -1,6 +1,0 @@
-# Python packages for web-research/.venv (Python 3.13), used by web-dev/tools/build_*.py and convert*.py
-numpy==2.5.4
-pillow==13.0.0
-pycryptodome==4.3.0
-scipy==1.18.1
-texture2ddecoder==1.0.6
