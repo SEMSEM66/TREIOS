@@ -295,6 +295,7 @@ These need the Japanese port's prepared `data/tsuki/analysis/main.bin` and `data
 
 ## Credits
 
+- **The port.** This repository is a copy of [waifwu/TsukiREbuild](https://github.com/waifwu/TsukiREbuild), where the engine, the Android app and the desktop app are made and from where [arcueid.date](https://arcueid.date/) is published. What this copy adds is the iPhone app in `web-dev/ios/`; upstream's website deployment is not part of it.
 - **The game.** The Tsukihime remake, *Tsukihime -A piece of blue glass moon-*, and all of its story, art, music and voices belong to TYPE-MOON, Aniplex and the other rights holders. This project is unofficial and non-commercial, and is not affiliated with or endorsed by them. Please support the official release.
 - **English text.** The English script comes from the Tsukihimates fan translation patch.
 - **Built on.** The native port this grew from is based on the SuperMarioWonderRecomp recompilation framework by BelmanteGu. Ryujinx's shader translator was used offline; Ghidra for decompilation; FFmpeg, SVT-AV1 and Pillow for the conversions.
