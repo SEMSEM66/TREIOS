@@ -1,5 +1,5 @@
 // bridge.js - what the iOS app (web-dev/ios) adds to the page, run before any of the page's own code. Nothing in
-// web/app knows of it: the page is the one the website and the Android app serve. It carries the page's console
+// web/app knows of it: the page is the one upstream's website and Android app serve. It carries the page's console
 // and errors to the app's debug log (no Safari Web Inspector without a Mac), mirrors localStorage to a file,
 // passes a movie that cannot play instead of leaving the game waiting on it, and keeps the sound going past the
 // ring/silent switch.
