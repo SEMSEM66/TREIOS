@@ -6,7 +6,9 @@
 #                                     launches the app and, every $SHOT_EVERY seconds (default 10), takes a screenshot,
 #                                     copies the app's Documents out (the debug log, the probe's result, the save mirror)
 #                                     and prints the debug log's new lines; until the log has a line matching the regular
-#                                     expression <until> ("" for none) or <seconds> have passed. RECORD=1 takes a video too.
+#                                     expression <until> ("" for none) or <seconds> have passed. RECORD=1 takes a video too;
+#                                     SHOTS=0 takes no screenshots (simctl stalls while the game draws on a runner with
+#                                     no graphics card: the app takes its own pictures then, -TsukiSnapshotEvery).
 #                                     Exit 1 if <until> was given and never seen.
 #   sim.sh memory-warning             sends the app a memory warning
 #   sim.sh kill-web                   ends the page's WebKit content process, as iOS does when memory runs short
@@ -26,7 +28,8 @@ limit() { python3 "$here/with_timeout.py" "$@"; }
 say() { echo "[$(date +%H:%M:%S)] $*"; }
 container() { limit 20 xcrun simctl get_app_container "$udid" "$bundle" data 2>/dev/null; }
 shot() {   # the simulator's picture is upright; the game is landscape
-    limit 30 xcrun simctl io "$udid" screenshot --type=png "$1" >/dev/null 2>&1 || { say "screenshot failed or timed out: $(basename "$1")"; return 0; }
+    [ "${SHOTS:-1}" = 1 ] || return 0
+    limit 15 xcrun simctl io "$udid" screenshot --type=png "$1" >/dev/null 2>&1 || { say "screenshot failed or timed out: $(basename "$1")"; return 0; }
     sips -r "${SHOT_ROTATE:-270}" "$1" >/dev/null 2>&1 || true
 }
 
@@ -63,9 +66,11 @@ run)
     limit 60 xcrun simctl launch "$udid" "$bundle" "$@" || say "launch failed or timed out"
     docs="$out/$name-documents"; rm -rf "$docs"
     seen=0; t=0; n=0; killed=0; warned=0; printed=0; started=$SECONDS
+    echo "$name-$$" >"$out/phase"   # (a step that timed out can leave its script running: it stops when the next phase starts)
     while [ "$t" -lt "$seconds" ]; do
         sleep "$every"; t=$((SECONDS - started)); n=$((n + 1))
-        say "$name: ${t}s, screenshot $n"
+        [ "$(cat "$out/phase" 2>/dev/null)" = "$name-$$" ] || { say "$name: another phase has started; stopping"; exit 0; }
+        say "$name: ${t}s"
         shot "$out/$name-$(printf %02d "$n").png"
         if [ -n "${MEMORY_WARNING_AT:-}" ] && [ "$warned" = 0 ] && [ "$t" -ge "$MEMORY_WARNING_AT" ]; then warned=1; "$0" memory-warning || true; fi
         if [ -n "${KILL_WEB_AT:-}" ] && [ "$killed" = 0 ] && [ "$t" -ge "$KILL_WEB_AT" ]; then killed=1; "$0" kill-web || true; fi

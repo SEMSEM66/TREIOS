@@ -8,7 +8,7 @@ The Tsukihime remake, *Tsukihime -A piece of blue glass moon-*, rebuilt to play 
 
 ## Contents
 
-- [Play it](#play-it): in a browser, on Android, on Windows, macOS and Linux, from this folder
+- [Play it](#play-it): in a browser, on Android, on an iPhone, on Windows, macOS and Linux, from this folder
 - [Controls](#controls): mouse and keyboard, touch, controller
 - [How it plays](#how-it-plays): the opening page, saves, skipping, movies, Ciel-sensei
 - [Under the hood](#under-the-hood): loading, fonts, opening a particular scene
@@ -35,6 +35,10 @@ The site opens on a page with four tabs: **ABOUT** (what this is and how it was 
 3. Install. As much space again must be free while it installs; afterwards the download can be deleted.
 
 It needs Android 8 or newer and plays in landscape, by touch, as the site does on a phone. Android's Back gesture does what the game's own Back button does, and leaving the app makes the automatic save. Saves are kept in the app, apart from the website's, and a newer APK installs over the old one with them kept. How it is built: [web-dev/android/README.md](web-dev/android/README.md).
+
+### On an iPhone
+
+There is an iPhone app too, for sideloading with a free Apple ID (Sideloadly or AltStore); it is not on the App Store. It is the same game in a thin native shell, for iOS 18 or newer. The app itself is about 10 MB: on its first launch it downloads the game's files once (2.8 GB, over Wi-Fi), and then plays with no connection. GitHub Actions builds it, unsigned, with no Mac needed. How to install it, what a free Apple ID means (the app is signed again every 7 days; the saves and the files stay), and how it is built: [web-dev/ios/README.md](web-dev/ios/README.md).
 
 ### On Windows, macOS and Linux
 
@@ -225,7 +229,7 @@ Script names start with the day, then 00 for Arcueid's route or 01 for Ciel's: `
 | Folder | What is in it |
 |---|---|
 | `web/` | The game as served: `app/` (engine, interface, styles, fonts), `assets/` (the game's converted files) and `server.py`. It runs by itself. |
-| `web-dev/` | What makes and checks it: `tools/` (conversions from a game dump), `tests/`, `smoketest/`, `audit/` (the parity audit and the function map), `android/` (the Android app), `desktop/` (the Windows, macOS and Linux app) |
+| `web-dev/` | What makes and checks it: `tools/` (conversions from a game dump), `tests/`, `smoketest/`, `audit/` (the parity audit and the function map), `android/` (the Android app), `ios/` (the iPhone app), `desktop/` (the Windows, macOS and Linux app) |
 | `web-research/` | The first size research and its tools ([FINDINGS.md](web-research/FINDINGS.md)) |
 | `tools/cloudflare/` | The deployment ([below](#deployment)) |
 
