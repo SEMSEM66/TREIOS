@@ -142,14 +142,7 @@
   // ---- the page, once, for the log -------------------------------------------------------------------------------
   addEventListener("load", () => {
     let insets = "";
-    try {
-      const probe = document.createElement("div");
-      probe.style.cssText = "position:fixed;visibility:hidden;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
-      document.documentElement.append(probe);
-      const cs = getComputedStyle(probe);
-      insets = [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].join(" ");
-      probe.remove();
-    } catch { /* unknown */ }
+    try { fitSafeArea(); insets = insetsWere; } catch { /* unknown */ }   // (the insets in force: below)
     log("info", `page ${location.href}: secure context ${window.isSecureContext}, window ${innerWidth}x${innerHeight} @${devicePixelRatio}, safe area ${insets}, ` +
       `touch-first ${matchMedia("(hover: none) and (pointer: coarse)").matches}, fullscreen API ${!!document.documentElement.requestFullscreen}, ` +
       `audioSession ${navigator.audioSession ? navigator.audioSession.type : "none"}, stored keys ${localStorage.length}, ${navigator.userAgent}`);
@@ -157,9 +150,12 @@
 
   // ---- the safe area ----------------------------------------------------------------------------------------------
   // The page lays the stage out inside env(safe-area-inset-*) (touch.js), reading them when the window changes size.
-  // In the app they reach the page a moment after it has loaded, and with no change of size: when they change, the
-  // page is told as if the window had, and the stage is fitted again.
-  const safeArea = () => {
+  // In the app they can reach the page a moment after it has loaded, with no change of size, and now and then WebKit
+  // never passes them on at all (seen in CI: the view had 59 points at each end, the page read 0 for a whole run). So
+  // the app tells the page its view's own insets (setSafeArea); where env() reads nothing and the app has some, the
+  // engine's probe (#touch-safe, touch.css) is given the app's. Whenever the insets in force change, the page is
+  // told as if the window had changed size, and the stage is fitted again.
+  const fromPage = () => {
     try {
       let el = document.getElementById("tsuki-native-safe");
       if (!el) {
@@ -170,19 +166,32 @@
         document.documentElement.append(el);
       }
       const cs = getComputedStyle(el);
-      return [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].join(" ");
+      return [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].map((v) => parseFloat(v) || 0);
     } catch { return null; }
   };
-  let insetsWere = null;
-  setInterval(() => {
-    const now = safeArea();
-    if (now === null || now === insetsWere) return;
+  let fromApp = Array.isArray(N.safeArea) ? N.safeArea : null, insetsWere = null;
+  const px = (list) => list.map((v) => `${v}px`).join(" ");
+  const fitSafeArea = () => {
+    const page = fromPage();
+    if (page === null) return;
+    const lacking = !page.some((v) => v > 0) && !!fromApp && fromApp.some((v) => v > 0);
+    const inForce = lacking ? fromApp : page;
+    let style = document.getElementById("tsuki-native-safe-style");
+    if (lacking) {
+      if (!style) { style = document.createElement("style"); style.id = "tsuki-native-safe-style"; document.documentElement.append(style); }
+      const rule = `#touch-safe { padding: ${px(inForce)} !important; }`;
+      if (style.textContent !== rule) style.textContent = rule;
+    } else if (style) style.remove();
+    const now = `${px(inForce)} (${lacking ? "from the app: env() reads 0" : "env()"})`;
+    if (now === insetsWere) return;
     if (insetsWere !== null) {
       log("info", `safe area (top right bottom left) now ${now}, was ${insetsWere}; window ${innerWidth}x${innerHeight}`);
       window.dispatchEvent(new Event("resize"));
     }
     insetsWere = now;
-  }, 500);
+  };
+  setInterval(fitSafeArea, 500);
+  const setSafeArea = (top, right, bottom, left) => { fromApp = [top, right, bottom, left].map((v) => Number(v) || 0); fitSafeArea(); return px(fromApp); };
 
   // ---- how smoothly it runs, for the log (debug builds): frames a second, and the longest wait between two ------------
   if (N.debug && N.mode === "game") {
@@ -222,5 +231,5 @@
     }, 1500);
   }
 
-  window.__tsukiBridge = { resumeAudio, post, log };
+  window.__tsukiBridge = { resumeAudio, setSafeArea, post, log };
 })();
