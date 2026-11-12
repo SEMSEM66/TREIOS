@@ -37,6 +37,28 @@
   }, true);
   addEventListener("unhandledrejection", (e) => log("error", `unhandled rejection: ${show(e.reason)}`));
 
+  // ---- a game that cannot go on ----------------------------------------------------------------------------------
+  // The engine builds its WebGL state once and has nothing for a context that is lost: lost as the page starts, the
+  // renderer throws and the game never begins (seen in CI); lost later (iOS takes contexts from pages in the
+  // background and under memory pressure), the picture stops. Either way only loading the page again helps, so the
+  // app is asked to, once the page is on screen: it makes the automatic save if it can and comes back at the newest save.
+  let broken = false;
+  const pageBroken = (why) => {
+    if (broken || N.mode !== "game") return;
+    broken = true;
+    const ask = () => { log("error", `the game cannot go on: ${why}; asking the app to load the page again`); post({ t: "action", name: "broken", why }); };
+    if (!document.hidden) { ask(); return; }
+    const shown = () => { if (!document.hidden) { document.removeEventListener("visibilitychange", shown); ask(); } };
+    document.addEventListener("visibilitychange", shown);
+  };
+  // (the event does not bubble, but the capture phase passes through the document)
+  document.addEventListener("webglcontextlost", (e) => { if (e.target && e.target.id === "gl") pageBroken("its WebGL context was lost"); }, true);
+  // An error before the game is up (main.js sets window.vm once it has started): if it is still not up 5 s later, it never will be.
+  addEventListener("error", (e) => {
+    if (e.synthetic || window.vm || !e.filename || !/\/js\/[^/]+\.js$/.test(e.filename)) return;
+    setTimeout(() => { if (!window.vm) pageBroken(`it did not start (${e.message})`); }, 5000);
+  });
+
   // ---- the saves, mirrored to a file ---------------------------------------------------------------------------
   // Every change to localStorage is told to the app, which keeps Documents/Saves/localStorage.json. A page that
   // starts with nothing stored takes the mirror back before the game reads its saves.
