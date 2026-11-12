@@ -14,7 +14,14 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
     private let io = DispatchQueue(label: "date.arcueid.tsukirebuild.serve", qos: .userInitiated, attributes: .concurrent)
     /// The tasks WebKit has started and not stopped. Main thread only: WebKit starts and stops tasks there, and every
     /// call on a task is made there after looking here, because a call on a stopped task raises an exception.
-    private var live = Set<ObjectIdentifier>()
+    /// Each task has a number of its own, which its worker carries: a table keyed by the object alone could confuse a
+    /// task with a later one that was given the same address.
+    private var live = [ObjectIdentifier: UInt64]()
+    private var lastSerial: UInt64 = 0
+    /// What is known of each open request, for the log: one that stays open is named there (reportOpen).
+    private struct Open { let path: String; let started: Date; var sent: Int64 = 0; var total: Int64 = -1; var said = false }
+    private var openTasks = [UInt64: Open]()
+    private var reporter: Timer?
     private static let chunk = 512 * 1024
 
     /// Counted for the log: requests answered, and those that failed.
@@ -30,14 +37,38 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
     }
 
     func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
-        let id = ObjectIdentifier(urlSchemeTask)
-        live.insert(id)
+        lastSerial += 1
+        let id = lastSerial
+        live[ObjectIdentifier(urlSchemeTask)] = id
         let request = urlSchemeTask.request
+        openTasks[id] = Open(path: request.url?.path ?? "?", started: Date())
+        if reporter == nil {
+            reporter = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.reportOpen() }
+        }
         io.async { [weak self] in self?.serve(urlSchemeTask, id: id, request: request) }
     }
 
     func webView(_ webView: WKWebView, stop urlSchemeTask: WKURLSchemeTask) {
-        live.remove(ObjectIdentifier(urlSchemeTask))
+        if let id = live.removeValue(forKey: ObjectIdentifier(urlSchemeTask)) {
+            if let o = openTasks.removeValue(forKey: id), o.said { tlog("serve", "\(o.path): stopped by the page after \(Int(Date().timeIntervalSince(o.started))) s") }
+        }
+    }
+
+    /// Main thread. A request that has been open for 10 s is not a file being read: the log names it, once, and again when it ends.
+    private func reportOpen() {
+        let now = Date()
+        for (id, o) in openTasks where !o.said && now.timeIntervalSince(o.started) > 10 {
+            openTasks[id]?.said = true
+            tlog("serve", "still open after \(Int(now.timeIntervalSince(o.started))) s: \(o.path), \(o.sent) of \(o.total) bytes sent; \(openTasks.count) requests open")
+        }
+    }
+
+    /// Main thread: whether this worker's task is still the one WebKit is waiting on.
+    private func isLive(_ task: WKURLSchemeTask, _ id: UInt64) -> Bool { live[ObjectIdentifier(task)] == id }
+    /// Main thread: the task is over (answered or failed by this handler).
+    private func close(_ task: WKURLSchemeTask, _ id: UInt64) {
+        live.removeValue(forKey: ObjectIdentifier(task))
+        if let o = openTasks.removeValue(forKey: id), o.said { tlog("serve", "\(o.path): ended after \(Int(Date().timeIntervalSince(o.started))) s, \(o.sent) of \(o.total) bytes sent") }
     }
 
     // MARK: - Movies in another format
@@ -115,31 +146,42 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
     // MARK: - Answering
 
     /// Runs `body` on the main thread if WebKit has not stopped the task; false if it has.
-    private func onMain(_ id: ObjectIdentifier, _ body: () -> Void) -> Bool {
+    private func onMain(_ task: WKURLSchemeTask, _ id: UInt64, _ body: () -> Void) -> Bool {
         var alive = false
         DispatchQueue.main.sync {
-            if live.contains(id) { body(); alive = true }
+            if isLive(task, id) { body(); alive = true }
         }
         return alive
     }
 
-    private func finish(_ task: WKURLSchemeTask, _ id: ObjectIdentifier) {
+    private func finish(_ task: WKURLSchemeTask, _ id: UInt64) {
         DispatchQueue.main.sync {
-            if live.remove(id) != nil { task.didFinish() }
+            if isLive(task, id) { close(task, id); task.didFinish() }
         }
     }
 
-    private func answer(_ task: WKURLSchemeTask, _ id: ObjectIdentifier, url: URL, status: Int, headers: [String: String], body: Data?) {
+    /// The request cannot be answered: WebKit is told so, and the page's fetch fails instead of waiting for ever.
+    private func fail(_ task: WKURLSchemeTask, _ id: UInt64, _ error: Error, _ why: String) {
+        tlog("serve", why)
+        DispatchQueue.main.sync {
+            if isLive(task, id) { close(task, id); task.didFailWithError(error) }
+        }
+    }
+
+    private func answer(_ task: WKURLSchemeTask, _ id: UInt64, url: URL, status: Int, headers: [String: String], body: Data?) {
         var all = headers
         all["Content-Length"] = String(body?.count ?? 0)
         all["Cache-Control"] = "no-cache"
-        guard let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: all) else { return }
-        guard onMain(id, { task.didReceive(response); if let body, !body.isEmpty { task.didReceive(body) } }) else { return }
+        guard let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: all) else {
+            fail(task, id, URLError(.badServerResponse), "no response could be made for \(url.path)")
+            return
+        }
+        guard onMain(task, id, { task.didReceive(response); if let body, !body.isEmpty { task.didReceive(body) } }) else { return }
         finish(task, id)
     }
 
-    private func serve(_ task: WKURLSchemeTask, id: ObjectIdentifier, request: URLRequest) {
-        guard let url = request.url else { return }
+    private func serve(_ task: WKURLSchemeTask, id: UInt64, request: URLRequest) {
+        guard let url = request.url else { fail(task, id, URLError(.badURL), "a request with no address"); return }
         let method = (request.httpMethod ?? "GET").uppercased()
         let text = ["Content-Type": "text/plain; charset=utf-8"]
         guard method == "GET" || method == "HEAD" else {
@@ -171,13 +213,16 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
         }
         let length = max(0, last - first + 1)
         headers["Content-Length"] = String(length)
-        guard let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers) else { return }
-        guard onMain(id, { task.didReceive(response) }) else { return }
+        guard let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers) else {
+            fail(task, id, URLError(.badServerResponse), "no response could be made for \(url.path)")
+            return
+        }
+        guard onMain(task, id, { self.openTasks[id]?.total = length; task.didReceive(response) }) else { return }
         DispatchQueue.main.async { self.served += 1 }
         if method == "HEAD" || length == 0 { finish(task, id); return }
 
         guard let handle = try? FileHandle(forReadingFrom: file) else {
-            _ = onMain(id) { self.live.remove(id); task.didFailWithError(URLError(.cannotOpenFile)) }
+            fail(task, id, URLError(.cannotOpenFile), "could not open \(url.path)")
             return
         }
         defer { try? handle.close() }
@@ -190,13 +235,13 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
                 let data: Data? = try autoreleasepool { try handle.read(upToCount: want) }
                 guard let data, !data.isEmpty else { break }
                 left -= Int64(data.count)
-                guard onMain(id, { task.didReceive(data) }) else { return }   // stopped: a seek, or the page has gone
+                let sent = length - left
+                guard onMain(task, id, { self.openTasks[id]?.sent = sent; task.didReceive(data) }) else { return }   // stopped: a seek, or the page has gone
             }
             if left > 0 { throw URLError(.cannotLoadFromNetwork) }
             finish(task, id)
         } catch {
-            tlog("serve", "read failed \(url.path): \(error.localizedDescription)")
-            _ = onMain(id) { self.live.remove(id); task.didFailWithError(error) }
+            fail(task, id, error, "read failed \(url.path): \(error.localizedDescription)")
         }
     }
 }

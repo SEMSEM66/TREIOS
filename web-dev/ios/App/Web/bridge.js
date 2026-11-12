@@ -59,6 +59,26 @@
     setTimeout(() => { if (!window.vm) pageBroken(`it did not start (${e.message})`); }, 5000);
   });
 
+  // ---- a file that does not come (debug builds) ----------------------------------------------------------------------
+  // The game waits on a file it has asked for without a word. If a fetch has had no answer after 15 s, the log says
+  // which, and says again when the answer comes: with the app's own list of open requests (SchemeHandler) that tells
+  // whether the request was lost on the way or its answer was.
+  if (N.debug) {
+    try {
+      const realFetch = window.fetch;
+      window.fetch = function (input) {
+        const url = typeof input === "string" ? input : (input && input.url) || String(input);
+        const at = performance.now();
+        let waiting = true, said = false;
+        const timer = setTimeout(() => { if (waiting) { said = true; log("warn", `fetch: no answer after 15 s: ${url}`); } }, 15000);
+        const p = realFetch.apply(this, arguments);
+        const settled = (how) => { waiting = false; clearTimeout(timer); if (said) log("warn", `fetch: ${how} after ${((performance.now() - at) / 1000).toFixed(1)} s: ${url}`); };
+        p.then(() => settled("answered"), () => settled("failed"));
+        return p;
+      };
+    } catch (e) { log("error", `fetch log: ${show(e)}`); }
+  }
+
   // ---- the saves, mirrored to a file ---------------------------------------------------------------------------
   // Every change to localStorage is told to the app, which keeps Documents/Saves/localStorage.json. A page that
   // starts with nothing stored takes the mirror back before the game reads its saves.
