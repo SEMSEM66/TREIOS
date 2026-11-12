@@ -181,9 +181,14 @@ final class DownloadViewController: UIViewController {
             statusLabel.text = "Stopped: \(why)"
             title = "Try again"
         case .done:
+            bar.setProgress(1, animated: false)
+            if Config.flag("TsukiStayOnDownload") {   // (CI looks at the finished download before the game takes the runner)
+                statusLabel.text = "Done."
+                title = "Start"
+                break
+            }
             statusLabel.text = "Done. Starting the game..."
             title = "Start"
-            bar.setProgress(1, animated: false)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
                 UIApplication.shared.isIdleTimerDisabled = false
                 self?.onReady()

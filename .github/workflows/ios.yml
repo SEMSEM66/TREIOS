@@ -154,10 +154,9 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         timeout-minutes: 10
         env:
-          MEMORY_WARNING_AT: '60'
-          KILL_WEB_AT: '70'
+          QUIET: '1'
           SHOTS: '0'
-        run: web-dev/ios/ci/sim.sh run game 160 "" -TsukiAssetsDir "$GITHUB_WORKSPACE/web/assets" -TsukiAutopilot 1 -TsukiSnapshotEvery 8
+        run: web-dev/ios/ci/sim.sh run game 115 "" -TsukiAssetsDir "$GITHUB_WORKSPACE/web/assets" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiTestMemoryWarningAt 45 -TsukiTestEndPageAt 55 -TsukiQuitAfter 105
       - name: Fresh install
         id: fresh
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
@@ -172,13 +171,14 @@ jobs:
         timeout-minutes: 35
         env:
           SHOT_EVERY: '5'
-        run: web-dev/ios/ci/sim.sh run download 1500 'showing GameViewController' -TsukiAutoDownload 1
+        run: web-dev/ios/ci/sim.sh run download 1500 '\[download\] complete' -TsukiAutoDownload 1 -TsukiStayOnDownload 1
       - name: Third launch, the game from the downloaded files
         if: ${{ !cancelled() && steps.fresh.outcome == 'success' }}
         timeout-minutes: 8
         env:
+          QUIET: '1'
           SHOTS: '0'
-        run: web-dev/ios/ci/sim.sh run downloaded-game 100 "" -TsukiAutopilot 1 -TsukiSnapshotEvery 8
+        run: web-dev/ios/ci/sim.sh run downloaded-game 85 "" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiQuitAfter 75
       - name: Simulator log, shut down
         if: ${{ always() && steps.boot.outcome == 'success' }}
         timeout-minutes: 6
