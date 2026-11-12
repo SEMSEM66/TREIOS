@@ -1,0 +1,284 @@
+name: iOS
+
+# The iPhone app (web-dev/ios). There is no Mac behind this repository: these runs are the only build and test
+# environment, so every job prints what it finds and uploads its logs, screenshots and result bundles even when a
+# step fails. A push to `ios` ends with the unsigned IPA and the asset packs on the release `ios-latest`.
+on:
+  push:
+    branches: [ios]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RELEASE_TAG: ios-latest
+
+jobs:
+  test:
+    name: Tests and asset check (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Engine tests
+        run: node --test web-dev/tests/*.test.mjs
+      - name: Asset check
+        run: python3 web-dev/ios/ci/check_assets_repo.py
+
+  packs:
+    name: Asset packs and probe clips (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write   # the release that holds the packs
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: What this runner has
+        run: |
+          nproc; free -g | head -2; df -h / | tail -1
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null
+          ffmpeg -version | head -1
+      - name: Test clips for the compat probe
+        run: web-dev/ios/make_probe_media.sh
+      - name: Upload the test clips
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: probe-media
+          path: web-dev/ios/build/probe-media
+          retention-days: 30
+      - name: Build the asset packs
+        run: |
+          python3 web-dev/tools/build_ios_packs.py
+          ls -l web-dev/ios/build/packs | head -50
+          df -h / | tail -1
+      - name: Upload the index
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: asset-pack-index
+          path: web-dev/ios/build/packs/index.json
+          retention-days: 30
+      - name: Publish the packs on the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: web-dev/ios/ci/publish_packs.sh "$RELEASE_TAG" web-dev/ios/build/packs
+
+  app:
+    name: App (${{ matrix.name }}, ${{ matrix.scenario }})
+    needs: packs
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: write   # the IPA goes on the release
+    strategy:
+      fail-fast: false
+      matrix:
+        # Two runs per simulator version, each on a runner of its own: a runner has no graphics card, and once the
+        # game has drawn on it for a minute or two it is of little use for anything else. So the game is the last
+        # thing each run does, and what a run has found is uploaded before the game starts and again after it.
+        #   checkout: the compat probe, then the game with its files read from the checkout (a memory warning, then
+        #             the page's process is ended, on the way)
+        #   download: a fresh install downloads the packs from the release (cut short once), then the game from them
+        #             (its WebGL context taken away on the way)
+        include:
+          - name: iOS 26 simulator
+            runner: macos-26
+            xcode: '26.6'
+            ios: '26'
+            scenario: checkout
+            ipa: true
+          - name: iOS 26 simulator
+            runner: macos-26
+            xcode: '26.6'
+            ios: '26'
+            scenario: download
+          # The oldest iOS 18 a runner has (18.6; none has 18.0), which is the app's deployment target's family.
+          - name: iOS 18 simulator
+            runner: macos-15
+            xcode: '26.3'
+            ios: '18'
+            scenario: checkout
+          - name: iOS 18 simulator
+            runner: macos-15
+            xcode: '26.3'
+            ios: '18'
+            scenario: download
+          # The newest iOS there is a runner for. The image is a public preview: a failure here does not fail the run.
+          - name: iOS 27 simulator
+            runner: xcode-27
+            xcode: '27.2'
+            ios: '27'
+            scenario: checkout
+            experimental: true
+    continue-on-error: ${{ matrix.experimental == true }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+      SIM_OS: ${{ matrix.ios }}
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      ASSET_URL: https://github.com/${{ github.repository }}/releases/download/ios-latest/
+      ARTIFACT: ci-ios${{ matrix.ios }}-${{ matrix.scenario }}
+    steps:
+      - name: Check out
+        if: matrix.scenario == 'checkout'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out (without web/assets, which this run downloads)
+        if: matrix.scenario != 'checkout'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/web/assets/
+      - name: What this runner has
+        run: |
+          sw_vers
+          sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
+          df -h /
+          xcodebuild -version
+          xcrun simctl list runtimes
+          xcrun simctl list devicetypes | grep -i "iphone 1[6-9]" || true
+          system_profiler SPDisplaysDataType 2>/dev/null | head -20 || true
+      - name: Install XcodeGen
+        run: brew install xcodegen && xcodegen --version
+      - name: Fetch the probe's test clips
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: probe-media
+          path: web-dev/ios/build/probe-media
+      - name: Build
+        id: build
+        env:
+          WITH_IPA: ${{ matrix.ipa && '--device' || '' }}
+        run: web-dev/ios/build_ipa.sh --sim $WITH_IPA --asset-url "$ASSET_URL"
+      - name: Upload the IPA
+        if: always() && matrix.ipa
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Tsukihime-unsigned-ipa
+          path: web-dev/ios/build/Tsukihime-unsigned.ipa
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload the build logs and result bundles
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT }}-build
+          path: |
+            web-dev/ios/build/logs
+            web-dev/ios/build/*.xcresult
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Publish the IPA on the release
+        if: matrix.ipa
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: web-dev/ios/ci/publish_ipa.sh "$RELEASE_TAG" web-dev/ios/build/Tsukihime-unsigned.ipa
+
+      - name: Boot an iPhone 16 simulator
+        id: boot
+        timeout-minutes: 15
+        run: web-dev/ios/ci/sim.sh boot
+      - name: Install
+        id: install
+        timeout-minutes: 5
+        run: web-dev/ios/ci/sim.sh install web-dev/ios/build/Tsukihime-sim.app
+
+      # ---- checkout: the probe ----
+      - name: Compat probe
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'checkout' }}
+        timeout-minutes: 8
+        run: web-dev/ios/ci/sim.sh run probe 180 '\[probe\] result saved' -TsukiProbe 1
+      # ---- download: first launch from the release, cut short and taken up again ----
+      - name: First launch, the download from the release, cut short
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'download' }}
+        timeout-minutes: 8
+        run: web-dev/ios/ci/sim.sh run download-cut-short 180 'quitting in the middle of' -TsukiAutoDownload 1 -TsukiTestQuitInPart 12
+      - name: Second launch, the download goes on to its end
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'download' }}
+        timeout-minutes: 30
+        env:
+          SHOT_EVERY: '5'
+        run: web-dev/ios/ci/sim.sh run download 1500 '\[download\] complete' -TsukiAutoDownload 1 -TsukiStayOnDownload 1
+      - name: Upload what was found before the game
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT }}-before-game
+          path: web-dev/ios/build/ci
+          if-no-files-found: warn
+          retention-days: 30
+
+      # ---- the game, last ----
+      - name: The game, its files read from the checkout; a memory warning, then the page's process is ended
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'checkout' }}
+        timeout-minutes: 8
+        env:
+          QUIET: '1'
+          SHOTS: '0'
+        run: web-dev/ios/ci/sim.sh run game 150 "" -TsukiAssetsDir "$GITHUB_WORKSPACE/web/assets" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiTestEndPageInScript 00_00 -TsukiQuitAfter 140
+      - name: The game, from the downloaded files; its WebGL context is taken away on the way
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'download' }}
+        timeout-minutes: 8
+        env:
+          QUIET: '1'
+          SHOTS: '0'
+        run: web-dev/ios/ci/sim.sh run game 150 "" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiTestLoseContextInScript 00_00 -TsukiQuitAfter 140
+      - name: Upload what the game left
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT }}-game
+          path: web-dev/ios/build/ci
+          if-no-files-found: warn
+          retention-days: 30
+      # A scene that opens with a movie (01_00_ARC01_1, command 54). A simulator has no AV1 decoder: the game must go on.
+      - name: The game again, at a scene that starts with a movie
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'checkout' }}
+        timeout-minutes: 8
+        env:
+          QUIET: '1'
+          SHOTS: '0'
+        run: web-dev/ios/ci/sim.sh run movie 85 "" -TsukiAssetsDir "$GITHUB_WORKSPACE/web/assets" -TsukiAutopilot 1 -TsukiSnapshotEvery 6 -TsukiStartQuery script=01_00_ARC01_1 -TsukiQuitAfter 75
+      - name: Upload what the movie scene left
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'checkout' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT }}-movie
+          path: web-dev/ios/build/ci/movie*
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Check what the run left
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: python3 web-dev/ios/ci/check_run.py "${{ matrix.scenario }}"
+      - name: Simulator log, shut down
+        if: ${{ always() && steps.boot.outcome == 'success' }}
+        timeout-minutes: 6
+        run: |
+          df -h /
+          web-dev/ios/ci/sim.sh finish
+      - name: Upload the simulator's log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT }}-simulator-log
+          path: web-dev/ios/build/ci/simulator-log.txt
+          if-no-files-found: warn
+          retention-days: 30

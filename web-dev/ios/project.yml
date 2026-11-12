@@ -1,0 +1,50 @@
+# The Xcode project is made from this file by XcodeGen (build_ipa.sh runs it); the .xcodeproj is not in the repository.
+# build/stage is put together by build_ipa.sh first: www is web/app as it is, native is App/Web with the probe's test
+# clips, Assets.xcassets is App/Assets.xcassets with the icon made from web/app/apple-touch-icon.png.
+name: Tsukihime
+options:
+  bundleIdPrefix: date.arcueid
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    SUPPORTS_MACCATALYST: "NO"
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO"
+    SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: "NO"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TSUKI_ASSET_URL: ""
+    TSUKI_GIT_COMMIT: "local"
+    TSUKI_DEBUG_UI: "YES"
+targets:
+  Tsukihime:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/Sources
+      - path: build/stage/Assets.xcassets
+      - path: build/stage/www
+        type: folder
+        buildPhase: resources
+      - path: build/stage/native
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: date.arcueid.tsukirebuild
+        PRODUCT_NAME: Tsukihime
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_BITCODE: "NO"
+schemes:
+  Tsukihime:
+    build:
+      targets:
+        Tsukihime: all
+    run:
+      config: Debug
