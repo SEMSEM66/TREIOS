@@ -9,5 +9,5 @@ gh release edit "$tag" --repo "$repo" --notes "The unsigned IPA and the asset pa
 
 This build: commit ${GITHUB_SHA:-?}, run ${GITHUB_SERVER_URL:-https://github.com}/$repo/actions/runs/${GITHUB_RUN_ID:-?}.
 
-How to install it without a Mac: web-dev/ios/README.md."
+How to install it without a Mac: README.md."
 gh release view "$tag" --repo "$repo" --json assets --jq '.assets[] | select(.name | endswith(".ipa")) | "\(.name) \(.size) bytes"'
