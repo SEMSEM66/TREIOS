@@ -76,6 +76,27 @@
     return was;
   };
 
+  // ---- what this iPhone can decode, asked once as the game starts ------------------------------------------------------
+  if (N.mode === "game") {
+    // AV1, which every movie of the game is. (canPlayType says "probably" even where there is no decoder; this does not.)
+    // The app is told, and where a set of fallback movies is installed it serves those under the same addresses.
+    try {
+      navigator.mediaCapabilities.decodingInfo({ type: "file", video: { contentType: 'video/mp4; codecs="av01.0.08M.08"', width: 1920, height: 1080, bitrate: 5000000, framerate: 30 } })
+        .then((c) => {
+          post({ t: "caps", av1: !!c.supported });
+          log("info", `movies: AV1 supported ${c.supported}, smooth ${c.smooth}, power efficient ${c.powerEfficient}${c.supported ? "" : " (the movies will be passed over unless fallback movies are installed)"}`);
+        }, (e) => log("warn", `movies: could not ask about AV1: ${show(e)}`));
+    } catch (e) { log("warn", `movies: could not ask about AV1: ${show(e)}`); }
+    // Ogg Opus, which every voice, song and sound is. Without it the game is silent: the app says so.
+    fetch("/__native/media/opus.ogg").then((r) => (r.ok ? r.arrayBuffer() : null)).then((data) => {
+      if (!data) return;   // a build without the probe's clips
+      const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      return new Offline(2, 1, 48000).decodeAudioData(data).then(
+        (buf) => log("info", `sound: Ogg Opus decodes (${buf.duration.toFixed(2)} s, ${buf.sampleRate} Hz)`),
+        (e) => { log("error", `sound: Ogg Opus does NOT decode on this iOS: ${show(e)}`); post({ t: "action", name: "no-opus" }); });
+    }).catch((e) => log("warn", `sound: the Ogg Opus check could not run: ${show(e)}`));
+  }
+
   // ---- movies --------------------------------------------------------------------------------------------------
   // A movie the phone cannot decode gives an error, and the game passes it by itself (main.js playMovie). One that
   // neither plays nor fails would hold the story for ever: after STALL seconds without a new frame it is given the
@@ -165,11 +186,12 @@
     setInterval(() => {
       const now = performance.now(), span = (now - since) / 1000;
       if (!document.hidden && span > 0) {
-        const vm = window.vm;
-        log("info", `perf: ${(frames / span).toFixed(1)} frames a second over ${span.toFixed(0)} s, longest frame ${longest.toFixed(0)} ms; script ${vm && vm.script ? vm.script.name : "-"}, pc ${vm ? vm.pc : "-"}`);
+        const vm = window.vm, movie = document.getElementById("movie");
+        log("info", `perf: ${(frames / span).toFixed(1)} frames a second over ${span.toFixed(0)} s, longest frame ${longest.toFixed(0)} ms; script ${vm && vm.script ? vm.script.name : "-"}, pc ${vm ? vm.pc : "-"}, ` +
+          `movie ${movie && movie.style.display === "block" ? `on screen (${title(movie)} at ${movie.currentTime.toFixed(1)} s)` : "none"}`);
       }
       frames = 0; longest = 0; last = 0; since = now;
-    }, N.autopilot ? 15000 : 60000);
+    }, N.ci ? 15000 : 60000);
   }
 
   // ---- CI only (-TsukiAutopilot 1): Enter every so often, so a simulator run moves through the story by itself ----

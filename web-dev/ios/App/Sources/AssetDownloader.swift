@@ -97,6 +97,8 @@ final class AssetDownloader: NSObject, URLSessionDataDelegate {
     private var lastReport = Date.distantPast
     private var speedMark = (time: Date(), bytes: Int64(0))
     private var speed: Double = 0
+    /// CI (`-TsukiTestQuitInPart N`): the app quits in the middle of that part, to show the next launch taking it up.
+    private var quitInThisPart = false
 
     // MARK: - Control
 
@@ -238,6 +240,7 @@ final class AssetDownloader: NSObject, URLSessionDataDelegate {
             try Task.checkCancellation()
             let file = AssetStore.downloadsDir.appendingPathComponent(part.name)
             publish { $0.phase = .downloading; $0.part = i + 1 }
+            quitInThisPart = UserDefaults.standard.integer(forKey: "TsukiTestQuitInPart") == i + 1
             try await fetch(part, from: base.appendingPathComponent(part.name), to: file)
             try Task.checkCancellation()
             publish { $0.phase = .extracting }
@@ -367,6 +370,12 @@ final class AssetDownloader: NSObject, URLSessionDataDelegate {
         do {
             try handle.write(contentsOf: data)
             t.received += Int64(data.count)
+            if quitInThisPart, t.received > 24 * 1_048_576 {
+                try? handle.synchronize()
+                tlog("test", "quitting in the middle of \(t.name), \(t.offset + t.received) bytes of it here")
+                DebugLog.shared.flush()
+                exit(0)
+            }
         } catch {
             t.failure = error
             dataTask.cancel()

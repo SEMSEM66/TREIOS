@@ -202,6 +202,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
             "mode": mode == .probe ? "probe" : "game",
             "debug": Config.debugUI,
             "autopilot": Config.autopilot,
+            "ci": Config.autopilot || Config.snapshotEvery != nil,
             "assetsReady": AssetStore.isReady,
             "device": DeviceInfo.snapshot(),
         ]
@@ -371,6 +372,8 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
             SaveMirror.shared.handle(body)
         case "probe":
             if let result = body["result"] { ProbeStore.save(result) }
+        case "caps":
+            if let av1 = body["av1"] as? Bool { SchemeHandler.av1Plays = av1 }
         case "action":
             handleAction(body["name"] as? String ?? "")
         default:
@@ -384,6 +387,12 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         case "log": showLog()
         case "menu": openDebugMenu()
         case "close-probe": (parent as? RootViewController)?.route()
+        case "no-opus":
+            let alert = UIAlertController(title: "No sound on this version of iOS",
+                                          message: "This iPhone's iOS (\(UIDevice.current.systemVersion)) cannot decode Ogg Opus, which all of the game's voices, music and sounds are. The game will play silently. A newer iOS may decode it; the debug log has the details.",
+                                          preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
         default: tlog("js", "unknown action \(name)")
         }
     }
