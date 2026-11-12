@@ -195,14 +195,29 @@
         const ms = performance.now() - t0;
         let tex = "no WebGL to try";
         if (gl) {
-          const t = gl.createTexture();
-          gl.bindTexture(gl.TEXTURE_2D, t);
-          gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
-          const err = gl.getError();
-          gl.deleteTexture(t);
+          const upload = () => {
+            const t = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, t);
+            gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+            const err = gl.getError();
+            gl.deleteTexture(t);
+            return err;
+          };
+          let err = upload(), again = "";
+          // 37442 is CONTEXT_LOST_WEBGL: the system took the context away, which says nothing about the picture.
+          // A new context is made and the upload tried once more; the row says that it happened.
+          if (err === 37442 || gl.isContextLost()) {
+            const c = document.createElement("canvas");
+            c.width = 1920; c.height = 1080;
+            gl = c.getContext("webgl2", { alpha: false, antialias: false, preserveDrawingBuffer: true, powerPreference: "high-performance" });
+            if (!gl) return [null, `${bmp.width}x${bmp.height} decoded in ${ms.toFixed(0)} ms; the WebGL context was lost during the upload and no new one could be made (not a fault of the picture)`];
+            err = upload();
+            again = " (the WebGL context was lost once and made again)";
+            if (err === 37442 || gl.isContextLost()) return [null, `${bmp.width}x${bmp.height} decoded in ${ms.toFixed(0)} ms; the WebGL context was lost twice during the upload (not a fault of the picture)`];
+          }
           if (err) throw new Error(`texImage2D gave error ${err} for ${bmp.width}x${bmp.height}`);
-          tex = "uploads as a texture";
+          tex = `uploads as a texture${again}`;
         }
         const img = new Image();
         img.src = MEDIA + file;
