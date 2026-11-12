@@ -36,26 +36,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        webView = makeWebView()
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(webView)
-        // Edge to edge, under the Dynamic Island and the home indicator: the page reads the safe area itself
-        // (viewport-fit=cover and env(safe-area-inset-*), touch.css).
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: view.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-        if Config.debugUI {
-            // Three fingers, two taps: the debug menu. (A shake opens it too.)
-            let tap = UITapGestureRecognizer(target: self, action: #selector(openDebugMenu))
-            tap.numberOfTouchesRequired = 3
-            tap.numberOfTapsRequired = 2
-            tap.cancelsTouchesInView = false
-            tap.delegate = gestureDelegate
-            webView.addGestureRecognizer(tap)
-        }
+        installWebView()
         observeLifecycle()
         startSnapshots()
         scheduleTests()
@@ -254,12 +235,68 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private var resumeOnLoad = false
 
     private func load() {
-        pageLoads += 1
         let url = startURL
         resumeOnLoad = false   // (a later reload from the debug menu is a plain one)
-        tlog("web", "loading \(url.absoluteString) (load #\(pageLoads))")
-        // The user scripts are made once; the save mirror they carry is only read by a page whose storage is empty.
+        load(url, attempt: 1)
+    }
+
+    /// The load that has been asked for and has not finished: its address and which try this is.
+    private var pending: (url: URL, attempt: Int, serial: Int)?
+
+    /// Loads the page and makes sure it arrives. WebKit can drop a load without a word (seen in CI on iOS 18.6: the
+    /// reload that follows an ended page process never came back, and no delegate method was called). A load that
+    /// has not finished in 20 s is asked for again, the third time in a web view made new.
+    private func load(_ url: URL, attempt: Int) {
+        pageLoads += 1
+        let serial = pageLoads
+        pending = (url, attempt, serial)
+        if attempt >= 3 {
+            tlog("web", "making the web view again")
+            installWebView()
+        }
+        tlog("web", "loading \(url.absoluteString) (load #\(serial)\(attempt > 1 ? ", try \(attempt)" : ""))")
+        // The user scripts are made once per web view; the save mirror they carry is only read by a page whose storage is empty.
         webView.load(URLRequest(url: url))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
+            guard let self, let p = self.pending, p.serial == serial else { return }
+            guard UIApplication.shared.applicationState == .active else { self.reloadWhenActive = true; return }
+            if attempt >= 4 {
+                tlog("web", "the page did not load after \(attempt) tries")
+                self.pending = nil
+                self.showMessage("The game's page did not load. Reload tries again.")
+                return
+            }
+            tlog("web", "load #\(serial) has not finished after 20 s: asking again")
+            self.load(p.url, attempt: attempt + 1)
+        }
+    }
+
+    /// Puts a web view in the view, in place of the one before it if there was one.
+    private func installWebView() {
+        webView?.navigationDelegate = nil
+        webView?.uiDelegate = nil
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "tsuki")
+        webView?.removeFromSuperview()
+        webView = makeWebView()
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        view.insertSubview(webView, at: 0)
+        // Edge to edge, under the Dynamic Island and the home indicator: the page reads the safe area itself
+        // (viewport-fit=cover and env(safe-area-inset-*), touch.css).
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: view.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        if Config.debugUI {
+            // Three fingers, two taps: the debug menu. (A shake opens it too.)
+            let tap = UITapGestureRecognizer(target: self, action: #selector(openDebugMenu))
+            tap.numberOfTouchesRequired = 3
+            tap.numberOfTapsRequired = 2
+            tap.cancelsTouchesInView = false
+            tap.delegate = gestureDelegate
+            webView.addGestureRecognizer(tap)
+        }
     }
 
     // MARK: - Navigation
@@ -291,10 +328,12 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         tlog("web", "page loaded: \(webView.url?.absoluteString ?? "?")")
+        pending = nil
         tellSafeArea()
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        tlog("web", "page arriving: \(webView.url?.absoluteString ?? "?")")
         tellSafeArea()   // (the bridge is in the page from its first moment)
     }
 
@@ -329,11 +368,17 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
             showMessage("The game's page keeps being ended by iOS. Close other apps and open the game again.")
             return
         }
-        if UIApplication.shared.applicationState == .active { reloadAfterTermination() } else { reloadWhenActive = true }
+        // Not from inside this call: WebKit is still clearing the ended process away, and a load asked for now can be lost.
+        if UIApplication.shared.applicationState == .active {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.reloadAfterTermination() }
+        } else {
+            reloadWhenActive = true
+        }
     }
 
     private func reloadAfterTermination() {
         reloadWhenActive = false
+        if let p = pending { load(p.url, attempt: p.attempt + 1); return }   // a load was under way: that one again
         resumeOnLoad = mode == .game
         load()
     }
