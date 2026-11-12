@@ -1,7 +1,7 @@
 import UIKit
 import WebKit
 
-/// The game: web/app in a full-screen WKWebView at app://tsukihime.ios/, as MainActivity.java is for Android.
+/// The game: web/app in a full-screen WKWebView at app://tsukihime.ios/, as upstream's MainActivity.java is for Android.
 /// The same class shows the compat probe (mode .probe), which is a page of this app served the same way.
 final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     enum Mode { case game, probe }
@@ -45,7 +45,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        UIApplication.shared.isIdleTimerDisabled = true   // the screen stays on, as on Android
+        UIApplication.shared.isIdleTimerDisabled = true   // the screen stays on, as in upstream's Android app
         becomeFirstResponder()
         setNeedsUpdateOfHomeIndicatorAutoHidden()
         setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
@@ -181,7 +181,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         config.setURLSchemeHandler(handler, forURLScheme: Config.scheme)
         config.websiteDataStore = .default()   // the saves are the page's localStorage, kept on disk
         // Movies play in the page, not in the system's player, and sound needs no first tap (the site's opening page
-        // is that tap in a browser; the app has none, like the Android and desktop apps).
+        // is that tap in a browser; the app has none, like upstream's Android and desktop apps).
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
         config.allowsPictureInPictureMediaPlayback = false
@@ -435,7 +435,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     /// Leaving the foreground: the page makes the automatic save that `pagehide` would make (main.js appSuspend), as
-    /// the Android app asks for it in onStop. iOS may end a backgrounded app without another word.
+    /// upstream's Android app asks for it in onStop. iOS may end a backgrounded app without another word.
     private func suspend(background: Bool) {
         guard mode == .game else { return }
         var task = UIBackgroundTaskIdentifier.invalid

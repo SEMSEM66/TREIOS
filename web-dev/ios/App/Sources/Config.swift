@@ -3,7 +3,7 @@ import Foundation
 /// The app's fixed names, and the switches a launch can set. A launch argument `-TsukiName value` lands in
 /// UserDefaults' argument domain, which is how CI and `simctl launch` set them; nothing here needs a rebuild.
 enum Config {
-    /// The page's address, as the desktop app has `app://tsukihime.desktop/`. It never reaches the network: every request
+    /// The page's address, as upstream's desktop app has `app://tsukihime.desktop/`. It never reaches the network: every request
     /// to it is answered by SchemeHandler. `web/app/js/home.js` knows the host, so the app opens on the game itself.
     static let scheme = "app"
     static let host = "tsukihime.ios"
