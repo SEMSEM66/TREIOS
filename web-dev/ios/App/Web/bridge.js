@@ -132,8 +132,9 @@
   try {
     const play = HTMLMediaElement.prototype.play;
     HTMLMediaElement.prototype.play = function () {
+      if (this.tagName === "VIDEO" && this.error) log("warn", `movie ${title(this)}: could not be decoded (media error ${this.error.code}${this.error.message ? ": " + this.error.message : ""})`);
       const p = play.apply(this, arguments);
-      if (this.tagName === "VIDEO" && p && p.catch) p.catch((e) => log("warn", `movie ${title(this)}: play() refused: ${e && e.name ? `${e.name}: ${e.message}` : e}${this.error ? ` (media error ${this.error.code})` : ""}`));
+      if (this.tagName === "VIDEO" && p && p.catch) p.catch((e) => log("warn", `movie ${title(this)}: play() refused: ${e && e.name ? `${e.name}: ${e.message}` : e}`));
       return p;
     };
   } catch (e) { log("error", `movie log: ${show(e)}`); }
@@ -209,6 +210,10 @@
     let n = 0;
     setInterval(() => {
       if (document.hidden || !document.body) return;
+      // Never while a movie is up: a key passes a movie, and whether the game gets past one that cannot play by
+      // itself is one of the things a CI run is there to show.
+      const movie = document.getElementById("movie");
+      if (movie && movie.style.display === "block") return;
       for (const type of ["keydown", "keyup"]) document.body.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
       if (++n % 4 === 0) {
         const vm = window.vm, ctx = vm && vm.audio && vm.audio.ctx;

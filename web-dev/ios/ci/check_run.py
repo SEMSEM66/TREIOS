@@ -51,7 +51,9 @@ def game(ci, name="game"):
     lines = after_launch(read(os.path.join(docs, "Logs", "debug.log")))
     check(f"{name}: the page loads from app://tsukihime.ios/", any("page loaded: app://tsukihime.ios/" in l for l in lines))
     page = next((l for l in lines if "[js:info] page app://tsukihime.ios/" in l), "")
-    m = re.search(r"safe area ([\d.]+)px ([\d.]+)px ([\d.]+)px ([\d.]+)px", page)
+    # The insets can reach the page after it has loaded; bridge.js logs the change (and has the stage fitted again).
+    later = [l for l in lines if "safe area (top right bottom left) now" in l]
+    m = re.search(r"now ([\d.]+)px ([\d.]+)px ([\d.]+)px ([\d.]+)px", later[-1]) if later else re.search(r"safe area ([\d.]+)px ([\d.]+)px ([\d.]+)px ([\d.]+)px", page)
     check(f"{name}: the page is a secure context and touch-first", "secure context true" in page and "touch-first true" in page, page[40:160])
     check(f"{name}: the page is told the safe area (Dynamic Island, home indicator)", bool(m) and float(m[2]) > 0 and float(m[3]) > 0,
           m[0] if m else "no page line")
@@ -108,7 +110,7 @@ def checkout(ci):
     # The story opened at a scene that starts with a movie (01_00_ARC01_1, command 54: TOMP 8).
     if os.path.isdir(os.path.join(ci, "movie-documents")):
         m = after_launch(read(os.path.join(ci, "movie-documents", "Logs", "debug.log")))
-        refused = [l for l in m if "could not load <video>" in l or "passing it" in l or "play() refused" in l]
+        refused = [l for l in m if "could not load <video>" in l or "passing it" in l or "play() refused" in l or "could not be decoded" in l]
         played = [l for l in m if "[js:info] movie " in l and "playing" in l]
         check("movie: the scene asks for its movie", bool(refused or played), (refused or played or ["no movie line in the log"])[0][25:170])
         check("movie: AV1 plays here", bool(played) and not refused, "it does not: the movie is passed over" if refused else "", must=False)
