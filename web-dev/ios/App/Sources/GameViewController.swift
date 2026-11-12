@@ -157,12 +157,12 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         let stamp = DateFormatter()
         stamp.dateFormat = "HHmmss"
         let name = "\(mode == .probe ? "probe" : "game")-\(stamp.string(from: Date()))"
-        // The view as the screen has it (the web view's layers, the movie and the WebGL canvas included).
-        let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
-        let drawn = renderer.image { _ in _ = self.view.drawHierarchy(in: self.view.bounds, afterScreenUpdates: false) }
-        try? drawn.jpegData(compressionQuality: 0.8)?.write(to: dir.appendingPathComponent("\(name)-view.jpg"))
-        // And as WebKit paints the page.
-        webView.takeSnapshot(with: nil) { image, error in
+        // The page as WebKit paints it, asked for without waiting. (Drawing the view's own layers with
+        // drawHierarchy waits for the system's renderer: on a runner it once held the app for two minutes.)
+        guard !snapshotUnderWay else { return }
+        snapshotUnderWay = true
+        webView.takeSnapshot(with: nil) { [weak self] image, error in
+            self?.snapshotUnderWay = false
             if let data = image?.jpegData(compressionQuality: 0.8) {
                 try? data.write(to: dir.appendingPathComponent("\(name)-web.jpg"))
             } else {
@@ -170,6 +170,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
             }
         }
     }
+    private var snapshotUnderWay = false
 
     // MARK: - The web view
 
