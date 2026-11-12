@@ -58,6 +58,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         }
         observeLifecycle()
         startSnapshots()
+        scheduleTests()
         load()
     }
 
@@ -82,6 +83,40 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         super.viewSafeAreaInsetsDidChange()
         let i = view.safeAreaInsets
         tlog("layout", "view \(Int(view.bounds.width))x\(Int(view.bounds.height)), safe area top \(i.top) left \(i.left) bottom \(i.bottom) right \(i.right)")
+    }
+
+    // MARK: - Tests of what cannot be asked for from outside
+
+    /// Ends the page's WebKit process as iOS does when memory runs short, to try the recovery (the automatic save made
+    /// at the memory warning, the reload, the way back to the newest save). From the debug menu, and in CI.
+    private func endPageProcess() {
+        let kill = Selector(("_killWebContentProcess"))
+        guard webView.responds(to: kill) else {
+            tlog("test", "this WebKit cannot end its page's process on request")
+            return
+        }
+        tlog("test", "ending the page's process on purpose")
+        webView.perform(kill)
+    }
+
+    /// CI: `-TsukiTestMemoryWarningAt`, `-TsukiTestEndPageAt` and `-TsukiQuitAfter`, seconds after the launch. A runner
+    /// has no graphics card and is too busy to be asked for anything while the game draws, so the app does these itself.
+    private func scheduleTests() {
+        let after = { (key: String, action: @escaping () -> Void) in
+            let seconds = UserDefaults.standard.double(forKey: key)
+            if seconds > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: action) }
+        }
+        after("TsukiTestMemoryWarningAt") {
+            tlog("test", "sending the app a memory warning")
+            NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: UIApplication.shared)
+        }
+        after("TsukiTestEndPageAt") { [weak self] in self?.endPageProcess() }
+        after("TsukiQuitAfter") {
+            tlog("test", "quitting, as the launch asked")
+            SaveMirror.shared.flush()
+            DebugLog.shared.flush()
+            exit(0)
+        }
     }
 
     // MARK: - Pictures for CI (-TsukiSnapshotEvery seconds)
@@ -367,6 +402,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 tlog("app", "reload asked for from the debug menu")
                 self?.load()
             })
+            menu.addAction(UIAlertAction(title: "Test: end the page's process", style: .destructive) { [weak self] _ in self?.endPageProcess() })
         } else {
             menu.addAction(UIAlertAction(title: "Back to the game", style: .default) { [weak self] _ in (self?.parent as? RootViewController)?.route() })
         }

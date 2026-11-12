@@ -67,6 +67,12 @@ run)
     docs="$out/$name-documents"; rm -rf "$docs"
     seen=0; t=0; n=0; killed=0; warned=0; printed=0; started=$SECONDS
     echo "$name-$$" >"$out/phase"   # (a step that timed out can leave its script running: it stops when the next phase starts)
+    if [ "${QUIET:-0}" = 1 ]; then
+        # The game draws: the runner is too busy to answer simctl. The app was told when to quit (-TsukiQuitAfter).
+        say "$name: leaving the app alone for ${seconds}s"
+        sleep "$seconds"
+        t="$seconds"
+    fi
     while [ "$t" -lt "$seconds" ]; do
         sleep "$every"; t=$((SECONDS - started)); n=$((n + 1))
         [ "$(cat "$out/phase" 2>/dev/null)" = "$name-$$" ] || { say "$name: another phase has started; stopping"; exit 0; }
@@ -90,6 +96,7 @@ run)
     done
     sleep 2
     shot "$out/$name-end.png"
+    limit 60 xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
     if [ -n "$recorder" ]; then
         kill -INT "$recorder" 2>/dev/null
         for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$recorder" 2>/dev/null || break; sleep 1; done
@@ -97,6 +104,10 @@ run)
     fi
     c="$(container)"
     if [ -n "$c" ] && [ -d "$c/Documents" ]; then mkdir -p "$docs"; cp -R "$c/Documents/." "$docs/" 2>/dev/null || true; else say "the app has no data container: was it installed?"; fi
+    if [ "${QUIET:-0}" = 1 ] && [ -f "$docs/Logs/debug.log" ]; then
+        ls "$docs/Screens" 2>/dev/null | wc -l | xargs echo "pictures taken by the app:"
+        grep -v "autopilot:" "$docs/Logs/debug.log" | cut -c1-500 | tail -n "${LOG_LINES:-120}"
+    fi
     if [ -n "$until" ] && [ "$seen" = 0 ]; then echo "NOT SEEN within ${seconds}s: $until" >&2; exit 1; fi
     ;;
 memory-warning)
