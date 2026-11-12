@@ -52,7 +52,7 @@ There is no Safari Web Inspector without a Mac, so the app keeps its own log: th
 
 ## Checking it on an iPhone
 
-CI runs the app in simulators, which cannot show how a real phone decodes the movies, how fast it draws, or what it does under memory pressure (`NOTES.md` lists what is unverified). This is the list to go through on the phone; after it, share the debug log (step 12), which records most of the answers by itself.
+CI runs the app in simulators, which cannot show how a real phone decodes the movies, how fast it draws, or what it does under memory pressure (`NOTES.md` lists what is unverified). A first pass on an iPhone 16 with iOS 18.7.8 went well: the download, the AV1 movies, the sound, touch and the saves all work there, and `NOTES.md` ("On the iPhone 16") has what it showed and what is left. This is the list to go through on the phone; after it, share the debug log (step 12), which records most of the answers by itself.
 
 1. **Install** the IPA (above). Note whether Sideloadly or AltStore complained about anything.
 2. **Compat probe, before downloading**: on the download screen tap **Compat probe**. Wait for the summary line, tap **Play a test tone** once with the ring/silent switch on silent (is it heard?), then **Share the results**. The summary says whether AV1 and Ogg Opus work on this phone.
