@@ -66,6 +66,8 @@ def game(ci, name="game"):
           "; ".join(l[25:200] for l in errors[:4]) or "none")
     missing = [l for l in lines if "[serve] 404" in l]
     check(f"{name}: no file asked for is missing", not missing, "; ".join(l.split("404 ")[-1] for l in missing[:6]) or "none", must=False)
+    retried = [l for l in lines if "has not finished after" in l or "making the web view again" in l]
+    check(f"{name}: no load had to be asked for twice", not retried, "; ".join(l[25:140] for l in retried[:3]) or "none", must=False)
     pictures = glob.glob(os.path.join(docs, "Screens", "*.jpg"))
     check(f"{name}: pictures taken by the app", len(pictures) >= 4, f"{len(pictures)} in {name}-documents/Screens")
     return lines
