@@ -40,6 +40,29 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
         live.remove(ObjectIdentifier(urlSchemeTask))
     }
 
+    // MARK: - Movies in another format
+
+    /// Whether this iPhone plays AV1, which every movie of the game is. VideoToolbox's answer until the page has asked
+    /// WebKit itself (bridge.js, mediaCapabilities), whose answer is the one that counts.
+    static var av1Plays = DeviceInfo.hardwareDecode("av01")
+    /// Folders beside assets/movie that may hold the same movies in a format every iPhone decodes. None is published
+    /// yet: they are only made if a device shows AV1 failing (NOTES.md). The page asks for assets/movie/NAME.mp4 either way.
+    static let fallbackFolders = ["movie-h264", "movie-hevc"]
+    private var announced = Set<String>()
+
+    private func fallbackMovie(_ name: String) -> URL? {
+        guard !SchemeHandler.av1Plays else { return nil }
+        for folder in SchemeHandler.fallbackFolders {
+            let file = assets.appendingPathComponent(folder).appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: file.path) else { continue }
+            DispatchQueue.main.async {
+                if self.announced.insert(name).inserted { tlog("serve", "movie \(name): AV1 does not play here, serving \(folder)/\(name)") }
+            }
+            return file
+        }
+        return nil
+    }
+
     // MARK: - Files
 
     static let types: [String: String] = [
@@ -59,7 +82,9 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
         if parts.isEmpty || parts.contains("..") || parts.contains(".") { return nil }
         let base: URL, rest: ArraySlice<String>
         switch parts[0] {
-        case "assets": base = assets; rest = parts.dropFirst()
+        case "assets":
+            base = assets; rest = parts.dropFirst()
+            if rest.count == 2, rest.first == "movie", let other = fallbackMovie(parts[2]) { return other }
         case "__native": base = native; rest = parts.dropFirst()
         default: base = www; rest = parts[...]
         }
