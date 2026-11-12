@@ -29,6 +29,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         .landscape
     }
+
+    /// Called when the app is ended while it still runs, as by a swipe in the app switcher straight from the game.
+    /// An app that iOS ends while it is suspended, or one that crashes, gets no call: the log then goes from
+    /// "background" to the next "launch" with nothing between.
+    func applicationWillTerminate(_ application: UIApplication) {
+        tlog("life", "will terminate")
+        DebugLog.shared.flush()
+    }
 }
 
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -48,6 +56,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneWillResignActive(_ scene: UIScene) { tlog("life", "will resign active") }
     func sceneDidEnterBackground(_ scene: UIScene) { tlog("life", "background"); DebugLog.shared.flush() }
     func sceneWillEnterForeground(_ scene: UIScene) { tlog("life", "foreground") }
+    func sceneDidDisconnect(_ scene: UIScene) { tlog("life", "scene disconnected"); DebugLog.shared.flush() }
 }
 
 /// The game's sound must not stop for the ring/silent switch, and must come back after a call or an alarm.
