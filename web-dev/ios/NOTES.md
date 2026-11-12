@@ -8,7 +8,7 @@ Findings, decisions and their reasons, kept current as the work goes. "Measured"
 - Standard GitHub-hosted runners are free and unlimited for public repositories, macOS included. If the repository were made private, macOS minutes would be billed at $0.062 a minute against the plan's included amount (about ten times the Linux rate); a full run here uses about 30 macOS minutes per simulator version.
 - Release assets are public downloads on a public repository: the app fetches the asset packs with no token (measured: `index.json` answers 200 and a `Range` request 206, through the redirect to `release-assets.githubusercontent.com`). On a private repository they would need a token, and the packs would have to be hosted somewhere else.
 - The game's assets are already public in this repository's tree; publishing them again as release assets changes nothing about who can read them.
-- Upstream's `deploy-cloudflare.yml` runs on pushes to `main` only. It did not run for any push to `ios`. It will run (and fail, with no secrets) when `ios` is merged into `main`, unless it is disabled in the repository's Actions settings first.
+- Upstream's Cloudflare deployment (`deploy-cloudflare.yml`, `tools/cloudflare/`, `web/cloudflare/`) publishes upstream's website with secrets this repository does not have; here it failed on every push to `main`. It has been removed from this copy (2026-11-12), so merging `ios` into `main` starts no deployment.
 
 ## GitHub limits that decide the delivery (docs read 2026-11-11)
 
