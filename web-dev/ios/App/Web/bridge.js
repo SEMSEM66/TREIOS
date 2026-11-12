@@ -123,6 +123,55 @@
       `audioSession ${navigator.audioSession ? navigator.audioSession.type : "none"}, stored keys ${localStorage.length}, ${navigator.userAgent}`);
   });
 
+  // ---- the safe area ----------------------------------------------------------------------------------------------
+  // The page lays the stage out inside env(safe-area-inset-*) (touch.js), reading them when the window changes size.
+  // In the app they reach the page a moment after it has loaded, and with no change of size: when they change, the
+  // page is told as if the window had, and the stage is fitted again.
+  const safeArea = () => {
+    try {
+      let el = document.getElementById("tsuki-native-safe");
+      if (!el) {
+        if (!document.documentElement) return null;
+        el = document.createElement("div");
+        el.id = "tsuki-native-safe";
+        el.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
+        document.documentElement.append(el);
+      }
+      const cs = getComputedStyle(el);
+      return [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].join(" ");
+    } catch { return null; }
+  };
+  let insetsWere = null;
+  setInterval(() => {
+    const now = safeArea();
+    if (now === null || now === insetsWere) return;
+    if (insetsWere !== null) {
+      log("info", `safe area (top right bottom left) now ${now}, was ${insetsWere}; window ${innerWidth}x${innerHeight}`);
+      window.dispatchEvent(new Event("resize"));
+    }
+    insetsWere = now;
+  }, 500);
+
+  // ---- how smoothly it runs, for the log (debug builds): frames a second, and the longest wait between two ------------
+  if (N.debug && N.mode === "game") {
+    let frames = 0, longest = 0, last = 0, since = performance.now();
+    const tick = (t) => {
+      if (last) longest = Math.max(longest, t - last);
+      last = t;
+      frames++;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    setInterval(() => {
+      const now = performance.now(), span = (now - since) / 1000;
+      if (!document.hidden && span > 0) {
+        const vm = window.vm;
+        log("info", `perf: ${(frames / span).toFixed(1)} frames a second over ${span.toFixed(0)} s, longest frame ${longest.toFixed(0)} ms; script ${vm && vm.script ? vm.script.name : "-"}, pc ${vm ? vm.pc : "-"}`);
+      }
+      frames = 0; longest = 0; last = 0; since = now;
+    }, N.autopilot ? 15000 : 60000);
+  }
+
   // ---- CI only (-TsukiAutopilot 1): Enter every so often, so a simulator run moves through the story by itself ----
   if (N.autopilot) {
     let n = 0;

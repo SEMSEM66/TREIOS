@@ -54,4 +54,10 @@ enum Config {
     static var probeAtLaunch: Bool { flag("TsukiProbe") }
     static var autoDownload: Bool { flag("TsukiAutoDownload") }
     static var autopilot: Bool { flag("TsukiAutopilot") }
+    /// A picture of the web view into Documents/Screens every so many seconds (CI: `simctl io screenshot` stalls while
+    /// the game draws on a runner with no graphics card).
+    static var snapshotEvery: Double? {
+        let seconds = defaults.double(forKey: "TsukiSnapshotEvery")
+        return seconds > 0 ? seconds : nil
+    }
 }

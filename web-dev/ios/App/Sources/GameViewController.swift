@@ -57,6 +57,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
             webView.addGestureRecognizer(tap)
         }
         observeLifecycle()
+        startSnapshots()
         load()
     }
 
@@ -75,6 +76,44 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
         if motion == .motionShake, Config.debugUI { openDebugMenu() }
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        let i = view.safeAreaInsets
+        tlog("layout", "view \(Int(view.bounds.width))x\(Int(view.bounds.height)), safe area top \(i.top) left \(i.left) bottom \(i.bottom) right \(i.right)")
+    }
+
+    // MARK: - Pictures for CI (-TsukiSnapshotEvery seconds)
+
+    private var snapshotTimer: Timer?
+    private var snapshots = 0
+
+    private func startSnapshots() {
+        guard let every = Config.snapshotEvery else { return }
+        let dir = DebugLog.shared.directory.deletingLastPathComponent().appendingPathComponent("Screens", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        snapshotTimer = Timer.scheduledTimer(withTimeInterval: every, repeats: true) { [weak self] _ in self?.snapshot(into: dir) }
+    }
+
+    private func snapshot(into dir: URL) {
+        guard UIApplication.shared.applicationState == .active else { return }
+        snapshots += 1
+        let stamp = DateFormatter()
+        stamp.dateFormat = "HHmmss"
+        let name = "\(mode == .probe ? "probe" : "game")-\(stamp.string(from: Date()))"
+        // The view as the screen has it (the web view's layers, the movie and the WebGL canvas included).
+        let renderer = UIGraphicsImageRenderer(bounds: view.bounds)
+        let drawn = renderer.image { _ in _ = self.view.drawHierarchy(in: self.view.bounds, afterScreenUpdates: false) }
+        try? drawn.jpegData(compressionQuality: 0.8)?.write(to: dir.appendingPathComponent("\(name)-view.jpg"))
+        // And as WebKit paints the page.
+        webView.takeSnapshot(with: nil) { image, error in
+            if let data = image?.jpegData(compressionQuality: 0.8) {
+                try? data.write(to: dir.appendingPathComponent("\(name)-web.jpg"))
+            } else {
+                tlog("snapshot", "\(name): \(error?.localizedDescription ?? "no picture")")
+            }
+        }
     }
 
     // MARK: - The web view

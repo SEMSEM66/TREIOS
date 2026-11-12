@@ -242,10 +242,10 @@
       ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000, latencyHint: "interactive" });
       const first = ctx.state;
       if (ctx.state !== "running") { try { await within(ctx.resume(), 1500, "resume"); } catch { /* still suspended */ } }
-      const t0 = ctx.currentTime;
-      await sleep(400);
-      const moved = ctx.currentTime - t0;
-      return [ctx.state === "running" && moved > 0.1, `state ${first} at first, then ${ctx.state}; clock moved ${moved.toFixed(3)} s in 0.4 s; ${ctx.sampleRate} Hz, base latency ${ctx.baseLatency}, ` +
+      const t0 = ctx.currentTime, at = performance.now();
+      while (ctx.currentTime - t0 < 0.1 && performance.now() - at < 3000) await sleep(100);   // (the output takes a moment to start)
+      const moved = ctx.currentTime - t0, took = performance.now() - at;
+      return [ctx.state === "running" && moved >= 0.1, `state ${first} at first, then ${ctx.state}; clock moved ${moved.toFixed(3)} s in ${(took / 1000).toFixed(1)} s; ${ctx.sampleRate} Hz, base latency ${ctx.baseLatency}, ` +
         `audioSession ${navigator.audioSession ? navigator.audioSession.type : "none"}`];
     });
     await test("Sound", "plays a decoded sound", async () => {
