@@ -210,10 +210,10 @@
     let n = 0;
     setInterval(() => {
       if (document.hidden || !document.body) return;
-      // Never while a movie is up: a key passes a movie, and whether the game gets past one that cannot play by
-      // itself is one of the things a CI run is there to show.
+      // Never while a story's movie is up: a key passes a movie, and whether the game gets past one that cannot play
+      // by itself is one of the things a CI run is there to show. (The title's own movie loops behind its menu.)
       const movie = document.getElementById("movie");
-      if (movie && movie.style.display === "block") return;
+      if (movie && movie.style.display === "block" && !movie.titleLoop) return;
       for (const type of ["keydown", "keyup"]) document.body.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", bubbles: true, cancelable: true }));
       if (++n % 4 === 0) {
         const vm = window.vm, ctx = vm && vm.audio && vm.audio.ctx;
