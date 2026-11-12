@@ -59,7 +59,7 @@ def game(ci, name="game"):
     check(f"{name}: the story runs (the script moves on)", len(p) >= 2 and (p[-1][1], p[-1][2]) != (p[0][1], p[0][2]),
           ", ".join(f"{s} pc {pc} at {f:.0f} fps" for f, s, pc in p))
     errors = [l for l in lines if "[js:error]" in l]
-    movies = [l for l in errors if "<video>" in l or "movie" in l]
+    movies = [l for l in errors if "<video>" in l or "movie " in l]
     check(f"{name}: no errors from the page (a movie that cannot be decoded aside)", len(errors) == len(movies),
           "; ".join(l[25:200] for l in errors[:4]) or "none")
     missing = [l for l in lines if "[serve] 404" in l]
@@ -108,7 +108,7 @@ def checkout(ci):
     # The story opened at a scene that starts with a movie (01_00_ARC01_1, command 54: TOMP 8).
     if os.path.isdir(os.path.join(ci, "movie-documents")):
         m = after_launch(read(os.path.join(ci, "movie-documents", "Logs", "debug.log")))
-        refused = [l for l in m if "could not load <video>" in l or "passing it" in l]
+        refused = [l for l in m if "could not load <video>" in l or "passing it" in l or "play() refused" in l]
         played = [l for l in m if "[js:info] movie " in l and "playing" in l]
         check("movie: the scene asks for its movie", bool(refused or played), (refused or played or ["no movie line in the log"])[0][25:170])
         check("movie: AV1 plays here", bool(played) and not refused, "it does not: the movie is passed over" if refused else "", must=False)

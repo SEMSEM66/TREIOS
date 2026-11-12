@@ -127,6 +127,16 @@
   onVideo("emptied", (v) => { v.__logged = null; unwatch(v); });
   onVideo("ended", (v) => unwatch(v));
   onVideo("error", (v, e) => { if (!e.synthetic) unwatch(v); });
+  // A movie read ahead (preload.js) fails before it is in the page, where no listener of the page's sees it; the game
+  // then finds out when it asks it to play. That refusal is logged here (the game passes the movie on its own).
+  try {
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      const p = play.apply(this, arguments);
+      if (this.tagName === "VIDEO" && p && p.catch) p.catch((e) => log("warn", `movie ${title(this)}: play() refused: ${e && e.name ? `${e.name}: ${e.message}` : e}${this.error ? ` (media error ${this.error.code})` : ""}`));
+      return p;
+    };
+  } catch (e) { log("error", `movie log: ${show(e)}`); }
 
   // ---- the page, once, for the log -------------------------------------------------------------------------------
   addEventListener("load", () => {
