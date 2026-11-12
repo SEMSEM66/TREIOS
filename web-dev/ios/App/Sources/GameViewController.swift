@@ -83,6 +83,15 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         super.viewSafeAreaInsetsDidChange()
         let i = view.safeAreaInsets
         tlog("layout", "view \(Int(view.bounds.width))x\(Int(view.bounds.height)), safe area top \(i.top) left \(i.left) bottom \(i.bottom) right \(i.right)")
+        tellSafeArea()
+    }
+
+    /// The view's safe area, told to the page (bridge.js setSafeArea): WebKit's own env(safe-area-inset-*) reaches the
+    /// page late now and then, and once in CI not at all. Points here are CSS pixels there.
+    private func tellSafeArea() {
+        guard isViewLoaded, webView != nil else { return }
+        let i = view.safeAreaInsets
+        webView.evaluateJavaScript("window.__tsukiBridge && __tsukiBridge.setSafeArea(\(i.top), \(i.right), \(i.bottom), \(i.left))", completionHandler: nil)
     }
 
     // MARK: - Tests of what cannot be asked for from outside
@@ -282,6 +291,11 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         tlog("web", "page loaded: \(webView.url?.absoluteString ?? "?")")
+        tellSafeArea()
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        tellSafeArea()   // (the bridge is in the page from its first moment)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
