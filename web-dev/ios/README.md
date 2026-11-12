@@ -50,6 +50,25 @@ There is no Safari Web Inspector without a Mac, so the app keeps its own log: th
 - **Files app**: On My iPhone > Tsukihime > Logs holds `debug.log`, the one before it, and `probe-result.json`.
 - **Compat probe**: measures what this iPhone's WebKit does with everything the game needs (WebGL2, AVIF and WebP, Ogg Opus, AV1, H.264 and HEVC movies, sound without a tap, storage, fonts, the app's file serving). The download screen has a button for it, so it runs before any files are downloaded. **Share the results** sends the files anywhere the share sheet reaches.
 
+## Checking it on an iPhone
+
+CI runs the app in simulators, which cannot show how a real phone decodes the movies, how fast it draws, or what it does under memory pressure (`NOTES.md` lists what is unverified). This is the list to go through on the phone; after it, share the debug log (step 12), which records most of the answers by itself.
+
+1. **Install** the IPA (above). Note whether Sideloadly or AltStore complained about anything.
+2. **Compat probe, before downloading**: on the download screen tap **Compat probe**. Wait for the summary line, tap **Play a test tone** once with the ring/silent switch on silent (is it heard?), then **Share the results**. The summary says whether AV1 and Ogg Opus work on this phone.
+3. **First-run download**: back on the download screen, **Download** on Wi-Fi. Try **Pause** and **Resume** once, and leave the app and come back once. Note the time it took and whether it finished by itself.
+4. **Opening movie**: start a new game and let the opening play. Does it play, smoothly, with sound in step with the picture? (If the phone cannot decode it, the game goes on without it and the log says so.)
+5. **A scene with voice, music and sound effects**: play a few minutes. Is anything silent, late or crackling? Try the ring/silent switch.
+6. **Choices**: reach a choice and pick one by touch.
+7. **Save and load**: save to a slot, load it, and try the quick save.
+8. **Background, then resume**: go to the Home Screen for a minute and come back. The story and the music should go on.
+9. **Kill, then Continue**: swipe the app away in the app switcher, open it again, and choose Continue on the title screen. It should be where you left.
+10. **Airplane mode**: turn it on, open the app, play a few minutes with a movie or two. Nothing should be missing.
+11. **A 30-minute session**: play on. Note any stutter, heat, a reload in the middle of play, or the app closing.
+12. **Share the debug log**: tap twice with three fingers (or shake the phone), **Share debug log**, and send the files. If the gesture does not open the menu, the same files are in the Files app under On My iPhone > Tsukihime > Logs.
+
+Also worth a look: the picture's margins beside the Dynamic Island and above the home indicator, and whether the game's swipes from the top and bottom edges work without the system taking them.
+
 ## Building it
 
 ```bash
@@ -61,7 +80,7 @@ python3 web-dev/tools/build_ios_packs.py   # build/packs: index.json and the par
 
 `build_ipa.sh` needs a Mac with Xcode and XcodeGen (`brew install xcodegen`); the Xcode project is generated from `project.yml` and is not in the repository. It signs nothing. `--asset-url` sets where the app looks for the packs (the folder that holds `index.json`); CI sets it to this repository's `ios-latest` release. `--no-debug-ui` leaves the debug menu out.
 
-`.github/workflows/ios.yml` is the same thing on GitHub's runners: the engine tests and the asset check on Linux, the packs and the probe's clips on Linux, then the app on macOS, where it is also run in an iPhone 16 simulator (the compat probe, the game, a memory warning and an ended page, a download from the release cut short and taken up again). Screenshots, videos and logs of those runs are the workflow's artifacts.
+`.github/workflows/ios.yml` is the same thing on GitHub's runners: the engine tests and the asset check on Linux, the packs and the probe's clips on Linux, then the app on macOS, where it is also run in iPhone 16 simulators on iOS 18, 26 and 27: the compat probe, the game, a memory warning and an ended page, a scene that opens with a movie, and a download from the release that is cut short and taken up again. `ci/check_run.py` checks what each run left and fails the job if something that must hold does not. The app's own pictures of the game, the logs and the probe's results are the workflow's artifacts.
 
 ## The asset packs
 
