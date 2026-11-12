@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""pick_runtime.py [version]: the identifier of an installed iOS Simulator runtime. Standard library only.
+"""pick_runtime.py [version]: the identifiers of the installed iOS Simulator runtimes. Standard library only.
 
-With a version ("18", "18.6", "26.5") the newest installed runtime whose version starts with it; with none, the newest
-of all. Prints the identifier (com.apple.CoreSimulator.SimRuntime.iOS-26-5) and exits 1 if nothing matches.
+With a version ("18", "18.6", "26.5") the installed runtimes whose version starts with it; with none, all of them.
+Prints the identifiers (com.apple.CoreSimulator.SimRuntime.iOS-26-5), the newest first, and exits 1 if nothing
+matches.
 """
 import json
 import subprocess
@@ -24,7 +25,8 @@ def main():
         found.append((tuple(int(p) for p in version.split(".") if p.isdigit()), r["identifier"]))
     if not found:
         sys.exit(1)
-    print(max(found)[1])
+    for _, identifier in sorted(found, reverse=True):   # the newest first
+        print(identifier)
 
 
 main()

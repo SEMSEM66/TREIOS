@@ -36,9 +36,22 @@ shot() {   # the simulator's picture is upright; the game is landscape
 case "${1:-}" in
 boot)
     xcrun simctl list runtimes
-    runtime="$(python3 "$here/pick_runtime.py" "${SIM_OS:-}")" || { echo "no iOS runtime matches '${SIM_OS:-}'" >&2; exit 1; }
-    say "runtime: $runtime"
-    udid="$(xcrun simctl create "Tsukihime CI" "iPhone 16" "$runtime")" || { echo "could not create an iPhone 16 on $runtime" >&2; xcrun simctl list devicetypes | grep -i iphone; exit 1; }
+    runtimes="$(python3 "$here/pick_runtime.py" "${SIM_OS:-}")" || { echo "no iOS runtime matches '${SIM_OS:-}'" >&2; exit 1; }
+    # An iPhone 16 on the newest matching runtime. Where a runtime will not take one (a runtime made for one model,
+    # or one that has dropped it), the next runtime, and failing that a newer iPhone: the log says which it was.
+    udid=""
+    for device in "iPhone 16" "iPhone 17" "iPhone 17 Pro"; do
+        for runtime in $runtimes; do
+            if udid="$(xcrun simctl create "Tsukihime CI" "$device" "$runtime" 2>/dev/null)" && [ -n "$udid" ]; then
+                say "simulator: $device on $runtime"
+                echo "$device on $runtime" >"$out/simulator.txt"
+                break 2
+            fi
+            say "no $device on $runtime"
+            udid=""
+        done
+    done
+    [ -n "$udid" ] || { echo "could not create a simulator on any of: $runtimes" >&2; xcrun simctl list devicetypes | grep -i iphone; exit 1; }
     echo "$udid" >"$udid_file"
     limit 300 xcrun simctl boot "$udid"
     limit 600 xcrun simctl bootstatus "$udid" -b
