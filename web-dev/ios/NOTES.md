@@ -102,57 +102,72 @@ The runs after those two found the faults told under "Findings and decisions" (a
 
 ## Compatibility matrix
 
-From the compat probe (`App/Web/probe.js`), which runs in the app and is served like the game. The simulator columns are measured; the iPhone 16 column waits for a device report.
+From the compat probe (`App/Web/probe.js`), which runs in the app and is served like the game. Every column is measured: the simulators' by CI, the iPhone 16's from the probe result sent from the phone (iOS 18.7.8, A18, the build of commit 30de75fa, 2026-11-12: 29 rows passed, none failed, in 22.5 s).
 
 | What the game needs | iOS 18.6 sim | iOS 26.5 sim | iOS 27.2 sim | iPhone 16 |
 | --- | --- | --- | --- | --- |
-| WebGL2 context as `renderer.js` opens it; a shader draws and reads back | yes | yes | yes | **needs device** |
-| AVIF through `createImageBitmap` with the engine's options, uploaded as a texture (a 1219x4238 standing picture of the game) | yes, 80 ms | yes, 144 ms | yes, 96 ms | **needs device** |
-| WebP (interface art) | yes | yes | yes | **needs device** |
-| Ogg Opus through `decodeAudioData` (made by CI, and a sound of the game) | yes | yes | yes | **needs device** |
-| The audio context runs with no tap | yes | yes | yes | **needs device** |
-| AV1 movie (made by CI, and the game's logo movie) | no | no | no | **needs device**: the only way to know |
-| H.264 movie through the app's file serving, with a seek | yes | yes | yes | **needs device** |
-| HEVC movie | yes | yes | not read | **needs device** |
-| `localStorage` room beside the saves | 4.75 M characters | 4.75 M characters | 4.75 M characters | **needs device** |
-| Byte ranges from the scheme handler (206, the right bytes; open-ended and suffix ranges) | yes | yes | yes | same code |
-| A bundled web font | yes | yes | not read | **needs device** |
-| Fullscreen API, `screen.orientation.lock`, `keyboard.lock` | absent | absent | not read | expected absent |
+| WebGL2 context as `renderer.js` opens it; a shader draws and reads back | yes | yes | yes | yes ("Apple GPU", largest texture 16384) |
+| AVIF through `createImageBitmap` with the engine's options, uploaded as a texture (a 1219x4238 standing picture of the game) | yes, 80 ms | yes, 144 ms | yes, 96 ms | yes, 25 ms |
+| WebP (interface art) | yes | yes | yes | yes |
+| Ogg Opus through `decodeAudioData` (made by CI, and a sound of the game) | yes | yes | yes | yes |
+| The audio context runs with no tap | yes | yes | yes | yes |
+| AV1 movie (made by CI, and the game's logo movie) | no | no | no | **yes**: both played to their end at 1920x1080; WebKit says supported, smooth and power efficient |
+| H.264 movie through the app's file serving, with a seek | yes | yes | yes | yes |
+| HEVC movie | yes | yes | not read | yes (WebKit says "smooth false") |
+| `localStorage` room beside the saves | 4.75 M characters | 4.75 M characters | 4.75 M characters | 4.75 M characters |
+| Byte ranges from the scheme handler (206, the right bytes; open-ended and suffix ranges) | yes | yes | yes | yes |
+| A bundled web font | yes | yes | not read | yes |
+| Fullscreen API, `screen.orientation.lock`, `keyboard.lock` | absent | absent | not read | absent |
 
-Why AV1 fails in every simulator: there is no AV1 decoder there (`VTIsHardwareDecodeSupported` is false for all three codecs on a runner, and WebKit on iOS has no software AV1 decoder). It says nothing about the A18.
+Why AV1 fails in every simulator: there is no AV1 decoder there (`VTIsHardwareDecodeSupported` is false for all three codecs on a runner, and WebKit on iOS has no software AV1 decoder). On the iPhone 16 it is true for all three, and AV1 plays.
 
 Other things the probe measured:
 
 - `canPlayType('video/mp4; codecs="av01.0.08M.08"')` answers "probably" where AV1 cannot be played. `mediaCapabilities.decodingInfo` answers "supported false" there, so that is what the app asks.
 - Sound formats a fallback could use, should one ever be needed: Opus in WebM and in CAF, AAC in M4A and MP3 all decode through `decodeAudioData`; Opus in MP4 does not.
-- A movie's `volume` could be set in the simulator (it read back 0.05). On iPhones a page has historically not been able to set it; the game sets a movie's volume from the music volume. **needs device.**
+- A movie's `volume` could be set in the simulator (it read back 0.05). On iPhones a page has historically not been able to set it; the game sets a movie's volume from the music volume. On the iPhone 16 it read back 0.05 too; whether it is heard so **needs device** (an ear).
 - A WebGL context can be taken away in the middle of the probe too: on iOS 26.5 the upload of the standing picture once answered `CONTEXT_LOST_WEBGL` (37442), which the probe reported as a picture that fails. It now makes a new context and uploads again, and says so in the row.
 - The Fullscreen API and orientation lock are absent in WKWebView on an iPhone. Every use of them in the engine is an optional call, and no run logged an error from the page.
 
+## On the iPhone 16
+
+One session, 2026-11-12, half an hour, about ten minutes of it in the game: an iPhone 16 (`iPhone17,3`, A18, 8 GB) on iOS 18.7.8 (22H352), with the IPA of commit 30de75fa. This is from the app's debug log, the probe's result and three screen recordings sent from the phone, and from the player's own word where a log cannot know.
+
+- **Install.** The unsigned IPA was signed, installed and opened. Which tool signed it was not said; the installed app's bundle ID read `date.arcueid.tsukirebuild`, unchanged.
+- **Probe.** 29 rows passed, none failed (the matrix above). VideoToolbox reports hardware decoders for AV1, HEVC and H.264.
+- **Download.** 2,797,198,712 bytes in 35 parts in 18 minutes on Wi-Fi, every checksum right, the folder excluded from backup. Paused and resumed three times by hand, each time taken up with `Range` at the byte it had reached. The app was left once for 3 s in the middle of a part: the connection was lost, asked for again 4 s later and taken up at byte 34,077,779 of 99,482,831. Free space went from 14.9 GB to 11.8 GB.
+- **Movies.** In the game the prologue's movie (AV1, 1920x1080, 384 s), the logo and the title's movie all started. A minute into the prologue the page drew 58.8 frames a second and the movie stood at 51.1 s, 51.2 s after it had started, so it kept real time. Nobody watched it for smoothness or for sound in step (the app was closed in the middle of it), and no recording shows a movie: that is still open.
+- **The story.** 57.5 to 60.0 frames a second over every minute, the longest frame 58 to 248 ms, through 3,000 commands of `00_00`. No error from the page, no missing file, no request left open, no memory warning, no ended page process, no lost WebGL context and no change of thermal state.
+- **Sound.** The player heard voices, music and sound effects, and still heard the sound with the ring/silent switch on silent. The recording of the story carries sound all the way, with breaks only where a scene changes.
+- **Touch.** In the recording the story moves on by taps, the quick panel is pulled down from the top edge, the system menu opens and a save is made in slot 1.
+- **The picture.** The stage sits inside the safe area: clear of the Dynamic Island, and above a black strip that holds the home indicator, which dims when the screen is not touched. The grey scenes with white bands at both ends, and the pictures that fill only a part of the stage, are the game's own: the simulators draw the same, and the bed's picture stands in the rectangle its command gives (`00_00`, command 1802: x 219 to 1041 of 1920, the full height).
+- **Leaving the app.** Each time the app lost focus the automatic save was made (`appSuspend -> saved`, eight times). The player closed the app three times with a swipe in the app switcher and opened it again: each time the mirror of the saves was there (6 keys, then 11) and the story was taken up from a save (command 1724 before the second close, 2188 a minute after the start that followed). The log could not tell such a swipe from iOS ending the app, so the player was asked; the app now logs `will terminate` when it is ended while it still runs. Once, 33 ms after going to the background on the way to being closed, the last `appSuspend` came back as WebKit's "JavaScript execution returned a result of an unsupported type"; the save had been made a second before, on losing focus.
+- **Small things seen, left as they are.** The quick panel's FULL button answers "Full screen is not available here" (the button is the web version's; the app is always full screen). Control Center's Now Playing shows the page as "tsukihime.ios" with a pause button.
+
 ## Findings and decisions, by risk
 
-1. **Movies.** All 45 are AV1 (Main, 8 bit, 4:2:0, 1080p, AAC sound). No fallback has been built, as agreed: it waits for the iPhone 16's probe. What is in place: the app asks WebKit whether AV1 plays and, where it does not, serves `assets/movie-h264/NAME.mp4` or `assets/movie-hevc/NAME.mp4` in place of `assets/movie/NAME.mp4` if such a file is installed, so a fallback pack would need no change to the engine. With no fallback installed a movie that cannot play is passed: the engine does that itself when the movie reports an error or `play()` is refused (measured for the prologue movie, a phase title, the logo and the title's movie), `bridge.js` logs it, and a movie that neither plays nor fails for 8 seconds is given the error it should have had (that last path has not been seen to fire). H.264 and HEVC both decode in the simulators. If a fallback is needed it would be a manually started workflow that transcodes the repository's AV1 files with ffmpeg, copies the AAC stream, keeps each file's frame rate and timestamps, and publishes the result as one more pack.
+1. **Movies.** All 45 are AV1 (Main, 8 bit, 4:2:0, 1080p, AAC sound). No fallback has been built, and the iPhone 16 needs none: there AV1 plays (see "On the iPhone 16"). What is in place: the app asks WebKit whether AV1 plays and, where it does not, serves `assets/movie-h264/NAME.mp4` or `assets/movie-hevc/NAME.mp4` in place of `assets/movie/NAME.mp4` if such a file is installed, so a fallback pack would need no change to the engine. With no fallback installed a movie that cannot play is passed: the engine does that itself when the movie reports an error or `play()` is refused (measured for the prologue movie, a phase title, the logo and the title's movie), `bridge.js` logs it, and a movie that neither plays nor fails for 8 seconds is given the error it should have had (that last path has not been seen to fire). H.264 and HEVC both decode in the simulators. If a fallback is needed it would be a manually started workflow that transcodes the repository's AV1 files with ffmpeg, copies the AAC stream, keeps each file's frame rate and timestamps, and publishes the result as one more pack.
 2. **Sound.** Ogg Opus decodes on iOS 18.6, 26.5 and 27.2 (simulators, which decode in software as a phone does). iOS 18.0 to 18.5 could not be measured: no runner has those runtimes. The app decodes a small Ogg Opus file as the game starts and, if that fails, says so on screen and in the log rather than playing silently. No WASM decoder and no second set of sound packs have been built. If a device needs one, the probe's rows say Opus in CAF would decode, which is a change of container with no re-encoding of the sound.
 3. **AVIF.** Decodes on all three, the engine's exact call included.
 4. **File serving.** `WKURLSchemeHandler` works for everything, movies with seeking included. No loopback server. The origin is a secure context. One fault was seen once and is not explained: on iOS 18.6 (run 43162304270) a first launch went through the prologue and the two cautions, and then the screen stayed white for 78 s and the story never started, while the page went on drawing at 59 frames a second and logged no error. All the engine waits on at that point is the `fetch` of the story's first script (`vm.getScript`), so a request that got no answer is the likeliest cause; that run's log could not show it, because only refused requests were logged. Since then the handler keeps every request under a number of its own and answers each one on every path, the log names any request still open after 5 s, and in debug builds `bridge.js` logs a `fetch` that has had no answer after 15 s, and its answer if one comes. It has not been seen in the runs since; if it comes back, the log says which file was waited for and which side lost it. On a phone it would look like a white screen that stays after the cautions: **needs device**.
-5. **Media policy.** Inline playback and no-tap playback are set and measured. The audio session is `.playback` natively, and `navigator.audioSession.type` is set to "playback" in the page. Whether the ring/silent switch leaves the sound on, and what a call or an alarm does, **needs device**: the probe has a "Play a test tone" button for the switch, and interruptions and route changes are logged.
+5. **Media policy.** Inline playback and no-tap playback are set and measured. The audio session is `.playback` natively, and `navigator.audioSession.type` is set to "playback" in the page. On the iPhone 16 the sound is heard with the ring/silent switch on silent (the player's report). What a call or an alarm does **needs device**: the probe has a "Play a test tone" button for the switch, and interruptions and route changes are logged.
 6. **Memory.** Memory warnings are logged and make the automatic save. A page process that iOS ends is reloaded straight to the newest save, at most three times a minute (measured by ending the process on purpose; the debug menu has the same test). Two faults in that recovery were found by CI and fixed. First, on iOS 18.6 the reload once never came back: the app asked for the page inside WebKit's own "process ended" call, and nothing followed for 97 s, with no delegate method called. The reload is now started half a second later, and any load that has not finished in 20 s is asked for again, the third time in a web view made new (the retry has not been seen to fire since). Second, the engine has nothing for a lost WebGL context: on iOS 26.5 the context was once lost while the shaders compiled, the renderer threw, and the game never started. iOS also takes contexts from pages in the background. `bridge.js` now notices a lost context, or a game that failed to start, and the app makes the automatic save and loads the page again at the newest save (measured on iOS 18.6 and 26.5 by taking the context away on purpose: the story went on in the same scene). In debug builds the log has frames a second and the longest frame once a minute. Whether `preload.js` reading ahead is too much for a phone's page process is **needs device**; no lower-memory profile has been built, because nothing has shown one is needed. One number to watch: music is decoded whole, about 84 MB of samples for a 218 s track.
 7. **Saves.** Every change to a `tsuki.*` key of `localStorage` is mirrored to `Documents/Saves/localStorage.json` (measured: the file is written, and holds the automatic save). A page that starts with no `tsuki.*` keys takes the mirror back; that restore has not been exercised in CI.
 8. **Desktop-browser assumptions.** The page is touch-first by the engine's own media query. The opening page is skipped by host name, as in the other apps.
 9. **Layout and gestures.** Landscape is locked by Info.plist and the view controllers; the web view is edge to edge with `contentInsetAdjustmentBehavior = .never`; the page reads the safe area. One real fault found by CI: the insets do not always reach the page with it. On iOS 18.6 they once arrived after `load` with no change of window size, and the engine fits its stage only when the window changes; on iOS 26.5 they once never arrived at all (the view had 59 points at each end, `env()` read 0 for the whole run), which leaves the stage under the Dynamic Island. So the app now tells the page its view's own insets; where `env()` reads nothing and the app has some, `bridge.js` gives them to the engine's probe element, and whenever the insets in force change it sends the page a `resize` (measured for the late arrival: 0 0 0 0, then 0 59 21 59, and the stage in the app's pictures sits inside them; the never-arriving case is covered by the same check in CI but only shows when WebKit misbehaves again). Status bar hidden, home indicator auto-hidden, edge gestures deferred on all edges, no back/forward swipe, idle timer off: all set, none of them visible to CI. **needs device.**
 
-## Needs device
+## Still needs device
 
-None of this can be shown by a simulator. The checklist is in README.md ("Checking it on an iPhone").
+What the session on the iPhone 16 settled is under "On the iPhone 16". What is left, none of which a simulator can show (the checklist is in README.md, "Checking it on an iPhone"):
 
-- The exact iOS version, model and chip (the log's first lines and the probe record them).
-- AV1: whether the A18 decodes the game's movies, smoothly, with sound in step. Decides whether a fallback is built.
-- Ogg Opus on the phone's iOS version, if it is older than 18.6.
-- Frame rate and heat over a long session; memory warnings and ended page processes (all in the log).
-- The ring/silent switch, calls, alarms, headphones being pulled out.
+- A movie watched to its end: smooth, with the sound in step. AV1 decodes; this is the eye's part.
+- Leaving the app for the Home Screen and coming back to a game that goes on. In the game the app was only ever closed, never just left.
+- The first start's way from the prologue through the cautions into the story (the place of the fault told under risk 4): the app was closed during the prologue, and the next start went to the story directly.
+- A long session: frame rate, heat, memory warnings and ended page processes over 30 minutes or more. Ten minutes showed none.
+- Calls, alarms, headphones being pulled out.
 - A movie's volume following the music volume.
-- The margins beside the Dynamic Island and above the home indicator as they look, the home indicator's visibility, edge swipes, the three-finger double tap and the shake that open the debug menu.
-- Touch itself: CI drives the game with key events, so no tap, swipe or pinch has been tried on WebKit.
-- The download on real Wi-Fi: pausing, leaving the app, the screen staying on, no mobile data used.
-- Signing: that Sideloadly and AltStore accept the unsigned IPA, and that re-signing after 7 days with the same Apple ID keeps the saves and the files.
-- The Files app showing Logs and Saves; sharing the log.
+- The gestures not in the recording: the swipe up for the log, holding for fast forward, two fingers to hide the text, the three-finger double tap and the shake that open the debug menu.
+- Airplane mode, and that no mobile data is used for the download.
+- Signing again after 7 days with the same Apple ID keeping the saves and the files.
+- The Files app showing Logs and Saves.
+- Ogg Opus on iOS 18.0 to 18.5, which neither a runner nor this phone has.
