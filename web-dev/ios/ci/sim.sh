@@ -70,7 +70,14 @@ run)
     if [ "${QUIET:-0}" = 1 ]; then
         # The game draws: the runner is too busy to answer simctl. The app was told when to quit (-TsukiQuitAfter).
         say "$name: leaving the app alone for ${seconds}s"
+        # What the Mac itself is busy with meanwhile (which process has the processors, how much memory is left).
+        ( while true; do
+              { date +%H:%M:%S; ps -Ao pid,pcpu,rss,comm -r | head -9 | cut -c1-140; vm_stat | sed -n 2,6p; echo; } >>"$out/$name-host-load.txt" 2>&1
+              sleep 10
+          done ) &
+        sampler=$!
         sleep "$seconds"
+        kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null
         t="$seconds"
     fi
     while [ "$t" -lt "$seconds" ]; do

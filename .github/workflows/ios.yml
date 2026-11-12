@@ -78,42 +78,64 @@ jobs:
         run: web-dev/ios/ci/publish_packs.sh "$RELEASE_TAG" web-dev/ios/build/packs
 
   app:
-    name: App (${{ matrix.name }})
+    name: App (${{ matrix.name }}, ${{ matrix.scenario }})
     needs: packs
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 75
+    timeout-minutes: 45
     permissions:
       contents: write   # the IPA goes on the release
     strategy:
       fail-fast: false
       matrix:
+        # Two runs per simulator version, each on a runner of its own: a runner has no graphics card, and once the
+        # game has drawn on it for a minute or two it is of little use for anything else. So the game is the last
+        # thing each run does, and what a run has found is uploaded before the game starts and again after it.
+        #   checkout: the compat probe, then the game with its files read from the checkout (a memory warning, then
+        #             the page's process is ended, on the way)
+        #   download: a fresh install downloads the packs from the release (cut short once), then the game from them
         include:
           - name: iOS 26 simulator
             runner: macos-26
             xcode: '26.6'
             ios: '26'
+            scenario: checkout
             ipa: true
+          - name: iOS 26 simulator
+            runner: macos-26
+            xcode: '26.6'
+            ios: '26'
+            scenario: download
     env:
       DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
       SIM_OS: ${{ matrix.ios }}
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
       ASSET_URL: https://github.com/${{ github.repository }}/releases/download/ios-latest/
+      ARTIFACT: ci-ios${{ matrix.ios }}-${{ matrix.scenario }}
     steps:
       - name: Check out
+        if: matrix.scenario == 'checkout'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Check out (without web/assets, which this run downloads)
+        if: matrix.scenario != 'checkout'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/web/assets/
       - name: What this runner has
         run: |
           sw_vers
           sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
           df -h /
-          ls -d /Applications/Xcode*.app
           xcodebuild -version
           xcrun simctl list runtimes
           xcrun simctl list devicetypes | grep -i "iphone 1[6-9]" || true
-          python3 --version
+          system_profiler SPDisplaysDataType 2>/dev/null | head -20 || true
       - name: Install XcodeGen
         run: brew install xcodegen && xcodegen --version
       - name: Fetch the probe's test clips
@@ -121,9 +143,11 @@ jobs:
         with:
           name: probe-media
           path: web-dev/ios/build/probe-media
-      - name: Build (simulator app and unsigned IPA)
+      - name: Build
         id: build
-        run: web-dev/ios/build_ipa.sh --sim --device --asset-url "$ASSET_URL"
+        env:
+          WITH_IPA: ${{ matrix.ipa && '--device' || '' }}
+        run: web-dev/ios/build_ipa.sh --sim $WITH_IPA --asset-url "$ASSET_URL"
       - name: Upload the IPA
         if: always() && matrix.ipa
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -132,67 +156,90 @@ jobs:
           path: web-dev/ios/build/Tsukihime-unsigned.ipa
           if-no-files-found: warn
           retention-days: 30
+      - name: Upload the build logs and result bundles
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT }}-build
+          path: |
+            web-dev/ios/build/logs
+            web-dev/ios/build/*.xcresult
+          if-no-files-found: warn
+          retention-days: 30
       - name: Publish the IPA on the release
         if: matrix.ipa
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "$RELEASE_TAG" web-dev/ios/build/Tsukihime-unsigned.ipa --clobber --repo "$GITHUB_REPOSITORY"
-          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --notes "The unsigned IPA and the asset packs of the iOS app, replaced by every push to the \`ios\` branch. This build: commit $GITHUB_SHA, run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. How to install it: web-dev/ios/README.md."
+        run: web-dev/ios/ci/publish_ipa.sh "$RELEASE_TAG" web-dev/ios/build/Tsukihime-unsigned.ipa
 
       - name: Boot an iPhone 16 simulator
         id: boot
+        timeout-minutes: 15
         run: web-dev/ios/ci/sim.sh boot
       - name: Install
         id: install
+        timeout-minutes: 5
         run: web-dev/ios/ci/sim.sh install web-dev/ios/build/Tsukihime-sim.app
+
+      # ---- checkout: the probe ----
       - name: Compat probe
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'checkout' }}
         timeout-minutes: 8
         run: web-dev/ios/ci/sim.sh run probe 180 '\[probe\] result saved' -TsukiProbe 1
-      - name: The game, with its files read from the checkout (the page's process is ended once on the way)
+      # ---- download: first launch from the release, cut short and taken up again ----
+      - name: First launch, the download from the release, cut short
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'download' }}
+        timeout-minutes: 5
+        run: web-dev/ios/ci/sim.sh run download-cut-short 20 "" -TsukiAutoDownload 1
+      - name: Second launch, the download goes on to its end
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'download' }}
+        timeout-minutes: 30
+        env:
+          SHOT_EVERY: '5'
+        run: web-dev/ios/ci/sim.sh run download 1500 '\[download\] complete' -TsukiAutoDownload 1 -TsukiStayOnDownload 1
+      - name: Upload what was found before the game
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        timeout-minutes: 10
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT }}-before-game
+          path: web-dev/ios/build/ci
+          if-no-files-found: warn
+          retention-days: 30
+
+      # ---- the game, last ----
+      - name: The game, its files read from the checkout; a memory warning, then the page's process is ended
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'checkout' }}
+        timeout-minutes: 8
         env:
           QUIET: '1'
           SHOTS: '0'
         run: web-dev/ios/ci/sim.sh run game 115 "" -TsukiAssetsDir "$GITHUB_WORKSPACE/web/assets" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiTestMemoryWarningAt 45 -TsukiTestEndPageAt 55 -TsukiQuitAfter 105
-      - name: Fresh install
-        id: fresh
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        timeout-minutes: 5
-        run: web-dev/ios/ci/sim.sh install web-dev/ios/build/Tsukihime-sim.app
-      - name: First launch, download from the release, cut short
-        if: ${{ !cancelled() && steps.fresh.outcome == 'success' }}
-        timeout-minutes: 5
-        run: web-dev/ios/ci/sim.sh run download-cut-short 20 "" -TsukiAutoDownload 1
-      - name: Second launch, the download goes on to its end and the game starts
-        if: ${{ !cancelled() && steps.fresh.outcome == 'success' }}
-        timeout-minutes: 35
-        env:
-          SHOT_EVERY: '5'
-        run: web-dev/ios/ci/sim.sh run download 1500 '\[download\] complete' -TsukiAutoDownload 1 -TsukiStayOnDownload 1
-      - name: Third launch, the game from the downloaded files
-        if: ${{ !cancelled() && steps.fresh.outcome == 'success' }}
+      - name: The game, from the downloaded files
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'download' }}
         timeout-minutes: 8
         env:
           QUIET: '1'
           SHOTS: '0'
-        run: web-dev/ios/ci/sim.sh run downloaded-game 85 "" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiQuitAfter 75
+        run: web-dev/ios/ci/sim.sh run game 100 "" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiQuitAfter 90
+      - name: Upload what the game left
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT }}-game
+          path: web-dev/ios/build/ci
+          if-no-files-found: warn
+          retention-days: 30
       - name: Simulator log, shut down
         if: ${{ always() && steps.boot.outcome == 'success' }}
         timeout-minutes: 6
         run: |
           df -h /
           web-dev/ios/ci/sim.sh finish
-      - name: Upload logs, screenshots and result bundles
+      - name: Upload the simulator's log
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ci-${{ matrix.runner }}-ios${{ matrix.ios }}
-          path: |
-            web-dev/ios/build/ci
-            web-dev/ios/build/logs
-            web-dev/ios/build/*.xcresult
+          name: ${{ env.ARTIFACT }}-simulator-log
+          path: web-dev/ios/build/ci/simulator-log.txt
           if-no-files-found: warn
           retention-days: 30
