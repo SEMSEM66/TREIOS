@@ -93,6 +93,7 @@ jobs:
         #   checkout: the compat probe, then the game with its files read from the checkout (a memory warning, then
         #             the page's process is ended, on the way)
         #   download: a fresh install downloads the packs from the release (cut short once), then the game from them
+        #             (its WebGL context taken away on the way)
         include:
           - name: iOS 26 simulator
             runner: macos-26
@@ -233,13 +234,13 @@ jobs:
           QUIET: '1'
           SHOTS: '0'
         run: web-dev/ios/ci/sim.sh run game 150 "" -TsukiAssetsDir "$GITHUB_WORKSPACE/web/assets" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiTestEndPageInScript 00_00 -TsukiQuitAfter 140
-      - name: The game, from the downloaded files
+      - name: The game, from the downloaded files; its WebGL context is taken away on the way
         if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.scenario == 'download' }}
         timeout-minutes: 8
         env:
           QUIET: '1'
           SHOTS: '0'
-        run: web-dev/ios/ci/sim.sh run game 100 "" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiQuitAfter 90
+        run: web-dev/ios/ci/sim.sh run game 150 "" -TsukiAutopilot 1 -TsukiSnapshotEvery 8 -TsukiTestLoseContextInScript 00_00 -TsukiQuitAfter 140
       - name: Upload what the game left
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

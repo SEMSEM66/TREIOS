@@ -102,6 +102,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         }
         after("TsukiTestEndPageAt") { [weak self] in self?.endPageProcess() }
         if let script = Config.string("TsukiTestEndPageInScript") { endPage(inScript: script, giveUpAt: Date().addingTimeInterval(95)) }
+        if let script = Config.string("TsukiTestLoseContextInScript") { endPage(inScript: script, giveUpAt: Date().addingTimeInterval(95), loseContext: true) }
         after("TsukiQuitAfter") {
             tlog("test", "quitting, as the launch asked")
             SaveMirror.shared.flush()
@@ -111,8 +112,9 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     /// CI: once the story is well into `script` (so that there is a checkpoint to save), a memory warning, and 8 s
-    /// later the page's process is ended. A runner's speed varies too much for a fixed number of seconds.
-    private func endPage(inScript script: String, giveUpAt: Date) {
+    /// later the page's process is ended, or (`loseContext`) the game's WebGL context is taken away instead. A runner's
+    /// speed varies too much for a fixed number of seconds.
+    private func endPage(inScript script: String, giveUpAt: Date, loseContext: Bool = false) {
         let ask = "(() => { const v = window.vm; return v && v.running && v.script ? v.script.name + ':' + v.pc : ''; })()"
         webView.evaluateJavaScript(ask) { [weak self] result, _ in
             guard let self else { return }
@@ -120,7 +122,15 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
             let parts = at.split(separator: ":")
             let there = parts.count == 2 && parts[0] == script && (Int(parts[1]) ?? 0) >= 40
             guard there || Date() > giveUpAt else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.endPage(inScript: script, giveUpAt: giveUpAt) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.endPage(inScript: script, giveUpAt: giveUpAt, loseContext: loseContext) }
+                return
+            }
+            if loseContext {
+                tlog("test", there ? "the story is at \(at): taking the game's WebGL context away" : "the story did not reach \(script) in time (it is at '\(at)'): taking the WebGL context away anyway")
+                let lose = "(() => { const gl = window.gfx && window.gfx.gl, x = gl && gl.getExtension('WEBGL_lose_context'); if (!x) return 'no WEBGL_lose_context'; x.loseContext(); return 'lost'; })()"
+                self.webView.evaluateJavaScript(lose) { result, error in
+                    tlog("test", "loseContext -> \(result.map { "\($0)" } ?? error?.localizedDescription ?? "nil")")
+                }
                 return
             }
             tlog("test", there ? "the story is at \(at): sending the app a memory warning" : "the story did not reach \(script) in time (it is at '\(at)'): sending the memory warning anyway")
@@ -376,6 +386,24 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         }
     }
 
+    /// The page is alive but the game in it is not (bridge.js: its WebGL context was lost, or it never started). The
+    /// automatic save is made if the game can still make one, and the page is loaded again at the newest save. Counted
+    /// with the ended processes: three in a minute, and the app stops and says so.
+    private func reloadBrokenPage() {
+        let now = Date()
+        terminations = terminations.filter { now.timeIntervalSince($0) < 60 } + [now]
+        tlog("webkit", "the page asked to be loaded again (\(terminations.count) reloads in the last minute); \(DeviceInfo.memorySummary())")
+        if terminations.count > 3 {
+            tlog("webkit", "not reloading again: it keeps failing")
+            showMessage("The game keeps stopping on this iPhone. Close other apps and open the game again; the debug log says what happened.")
+            return
+        }
+        webView.evaluateJavaScript("globalThis.appSuspend ? (globalThis.appSuspend(), 'saved') : 'no appSuspend'") { [weak self] result, error in
+            tlog("webkit", "before the reload: appSuspend -> \(result.map { "\($0)" } ?? error?.localizedDescription ?? "nil")")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self?.reloadAfterTermination() }
+        }
+    }
+
     private func reloadAfterTermination() {
         reloadWhenActive = false
         if let p = pending { load(p.url, attempt: p.attempt + 1); return }   // a load was under way: that one again
@@ -466,6 +494,7 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
         case "log": showLog()
         case "menu": openDebugMenu()
         case "close-probe": (parent as? RootViewController)?.route()
+        case "broken": reloadBrokenPage()
         case "no-opus":
             let alert = UIAlertController(title: "No sound on this version of iOS",
                                           message: "This iPhone's iOS (\(UIDevice.current.systemVersion)) cannot decode Ogg Opus, which all of the game's voices, music and sounds are. The game will play silently. A newer iOS may decode it; the debug log has the details.",

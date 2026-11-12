@@ -62,6 +62,8 @@ def game(ci, name="game"):
           ", ".join(f"{s} pc {pc} at {f:.0f} fps" for f, s, pc in p))
     errors = [l for l in lines if "[js:error]" in l]
     movies = [l for l in errors if "<video>" in l or "movie " in l]
+    if any("[test]" in l and "WebGL context away" in l for l in lines):   # (the run took the context away on purpose)
+        movies += [l for l in errors if "the game cannot go on: its WebGL context was lost" in l]
     check(f"{name}: no errors from the page (a movie that cannot be decoded aside)", len(errors) == len(movies),
           "; ".join(l[25:200] for l in errors[:4]) or "none")
     missing = [l for l in lines if "[serve] 404" in l]
@@ -137,7 +139,16 @@ def download(ci):
     complete = next((l for l in lines if "[download] complete" in l), "")
     check("download: every part arrives and passes its checksum", "complete=true" in complete and not any("checksum" in l for l in lines), complete[25:170])
     check("download: the assets folder is excluded from backup", "excluded from backup=true" in complete)
-    game(ci)
+    lines = game(ci)
+    took = next((re.search(r"the story is at (\S+):(\d+): taking", l) for l in lines if "[test] the story is at" in l), None)
+    lost = next((i for i, l in enumerate(lines) if "the game cannot go on: its WebGL context was lost" in l), None)
+    check("game: a lost WebGL context is noticed", bool(took) and lost is not None, f"taken away at {took[1]} pc {took[2]}" if took else "the story did not get far enough for the test")
+    rest = lines[lost:] if lost is not None else []
+    check("game: the automatic save is made and the page is loaded again with ?resume",
+          any("before the reload: appSuspend -> saved" in l for l in rest) and any("page loaded: app://tsukihime.ios/?resume" in l for l in rest))
+    then = perf(rest)
+    check("game: the story goes on from the save after it", bool(took) and bool(then) and then[-1][1] == took[1] and then[-1][2] > 0,
+          f"after the reload: {then[-1][1:] if then else '-'}")
 
 
 def main():
