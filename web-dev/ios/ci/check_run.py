@@ -103,8 +103,10 @@ def checkout(ci):
     rest = lines[ended:] if ended is not None else []
     check("game: the page is loaded again with ?resume", any("loading app://tsukihime.ios/?resume" in l for l in rest) and any("page loaded: app://tsukihime.ios/?resume" in l for l in rest))
     before, then = perf(lines[:ended] if ended is not None else []), perf(rest)
+    at = next((re.search(r"the story is at (\S+):(\d+)", l) for l in lines if "[test] the story is at" in l), None)
+    was = (at[1], int(at[2])) if at else (before[-1][1:] if before else None)
     check("game: the story goes on from the save, not from the start",
-          bool(before) and bool(then) and then[0][1] == before[-1][1], f"before: {before[-1][1:] if before else '-'}, after: {then[0][1:] if then else '-'}")
+          bool(was) and bool(then) and then[0][1] == was[0], f"when the page was ended: {was or '-'}, after the reload: {then[0][1:] if then else '-'}")
     check("game: the saves reach the mirror file", os.path.isfile(os.path.join(ci, "game-documents", "Saves", "localStorage.json")))
 
     # The story opened at a scene that starts with a movie (01_00_ARC01_1, command 54: TOMP 8).
