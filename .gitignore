@@ -2,9 +2,6 @@
 __pycache__/
 *.pyc
 
-# Local research data generated from a game dump.
+# The two tables check_assets.py reads. They are made from a game dump and are not in the repository;
+# web-dev/ios/ci/check_assets_repo.py writes stand-ins here for the length of a check.
 web-dev/data/
-web-research/extracted/
-web-research/analysis/
-web-research/.venv/
-*.dylib

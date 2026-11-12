@@ -12,7 +12,7 @@ files are AVIF, WebP, Opus and AV1 already). A part is named after its own SHA-2
 last time keeps its name and is neither uploaded nor downloaded again; each folder of web/assets starts a new part, so
 a change in one folder leaves the other folders' parts as they were. `id` is the hash of the parts' hashes.
 
-As in the Android and desktop apps, the loose voices and sound effects (assets/voice, assets/se) are left out where the
+As in upstream's Android and desktop apps, the loose voices and sound effects (assets/voice, assets/se) are left out where the
 sound packs (assets/pack) carry them. Writes to web-dev/ios/build/packs unless --out says otherwise; --verify reads the
 parts back and checks every size and hash.
 """

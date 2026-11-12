@@ -1,8 +1,8 @@
 import Foundation
 import WebKit
 
-/// Answers every request to app://tsukihime.ios/ from files, as the Android app's request interceptor and the
-/// desktop app's protocol handler do:
+/// Answers every request to app://tsukihime.ios/ from files, as the request interceptor of upstream's Android app and the
+/// protocol handler of its desktop app do:
 ///   /assets/...    the downloaded game files (Library/Application Support/assets)
 ///   /__native/...  this app's own pages (the compat probe and its test clips)
 ///   anything else  web/app, as it is in the repository (the bundle's www folder)
