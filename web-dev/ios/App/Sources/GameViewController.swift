@@ -111,11 +111,31 @@ final class GameViewController: UIViewController, WKNavigationDelegate, WKUIDele
             NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: UIApplication.shared)
         }
         after("TsukiTestEndPageAt") { [weak self] in self?.endPageProcess() }
+        if let script = Config.string("TsukiTestEndPageInScript") { endPage(inScript: script, giveUpAt: Date().addingTimeInterval(95)) }
         after("TsukiQuitAfter") {
             tlog("test", "quitting, as the launch asked")
             SaveMirror.shared.flush()
             DebugLog.shared.flush()
             exit(0)
+        }
+    }
+
+    /// CI: once the story is well into `script` (so that there is a checkpoint to save), a memory warning, and 8 s
+    /// later the page's process is ended. A runner's speed varies too much for a fixed number of seconds.
+    private func endPage(inScript script: String, giveUpAt: Date) {
+        let ask = "(() => { const v = window.vm; return v && v.running && v.script ? v.script.name + ':' + v.pc : ''; })()"
+        webView.evaluateJavaScript(ask) { [weak self] result, _ in
+            guard let self else { return }
+            let at = result as? String ?? ""
+            let parts = at.split(separator: ":")
+            let there = parts.count == 2 && parts[0] == script && (Int(parts[1]) ?? 0) >= 40
+            guard there || Date() > giveUpAt else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.endPage(inScript: script, giveUpAt: giveUpAt) }
+                return
+            }
+            tlog("test", there ? "the story is at \(at): sending the app a memory warning" : "the story did not reach \(script) in time (it is at '\(at)'): sending the memory warning anyway")
+            NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: UIApplication.shared)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { self.endPageProcess() }
         }
     }
 

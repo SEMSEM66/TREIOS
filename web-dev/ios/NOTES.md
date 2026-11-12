@@ -77,7 +77,7 @@ A runner has no graphics card and 7 GB of memory. While the game draws, the Mac 
 
 Two runs per simulator version, each on a runner of its own:
 
-- **checkout**: the compat probe; then the game with `web/assets` read from the checkout, with a memory warning at 45 s and the page's process ended at 55 s; then the game again at a scene that opens with a movie (`01_00_ARC01_1`).
+- **checkout**: the compat probe; then the game with `web/assets` read from the checkout, with a memory warning once the story is under way and the page's process ended 8 s later; then the game again at a scene that opens with a movie (`01_00_ARC01_1`).
 - **download**: a fresh install fetches the packs from the release and quits in the middle of part 12; the second launch goes on from there; then the game from the downloaded files.
 
 Measured in runs 43146749390 and 43149336042 (2026-11-12):
